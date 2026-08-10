@@ -8,7 +8,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # --- CONFIGURATION ---
 BOT_TOKEN = "8929947153:AAF8JIXltVTY3AZA8WZJfmr2CZDSlzTareE"
 WEBHOOK_URL = "https://arsenalxx.onrender.com"
-TARGET_GROUP_ID = 1004211404152
+TARGET_GROUP_ID = -1004211404152
 
 # --- COMMAND HANDLERS ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -134,12 +134,21 @@ def parse_upsc_question(text: str):
         "explanation": explanation
     }
 
+async def send_long_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str, parse_mode: str = "HTML"):
+    """Helper function to bypass Telegram's 4096 character message limit by chunking."""
+    chunk_size = 4000
+    for i in range(0, len(text), chunk_size):
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=text[i:i + chunk_size],
+            parse_mode=parse_mode
+        )
+
 async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text
     parsed = parse_upsc_question(text)
     source_chat_id = update.effective_chat.id
 
-    # Extract Author Name
     author_name = update.effective_user.first_name
     if update.effective_user.last_name:
         author_name += f" {update.effective_user.last_name}"
@@ -158,30 +167,24 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     explanation = parsed["explanation"]
 
     try:
-        # Sanitize HTML tags just in case they are in the question or author name
         safe_question = question_text.replace('<', '&lt;').replace('>', '&gt;')
         safe_author = author_name.replace('<', '&lt;').replace('>', '&gt;')
-        
-        # Format the author line in HTML italics
         author_append = f"\n\n👤 <i>Quiz by: {safe_author}</i>"
         
-        # Telegram Poll limit is 300 characters (we check the raw length without HTML tags)
         raw_length = len(question_text) + len(f"\n\n👤 Quiz by: {author_name}")
 
-        # Handle Telegram 300-char question limit
+        # --- UNLIMITED QUESTION LOGIC ---
         if raw_length > 300:
-            await context.bot.send_message(
-                chat_id=TARGET_GROUP_ID, 
-                text=f"📌 <b>QUESTION:</b>\n\n{safe_question}", 
-                parse_mode="HTML"
-            )
+            long_question_text = f"📌 <b>QUESTION:</b>\n\n{safe_question}"
+            # Uses the new helper function to send infinitely long questions
+            await send_long_message(context, TARGET_GROUP_ID, long_question_text, "HTML")
             poll_question = f"👇 Refer to the question above:{author_append}"
         else:
             poll_question = f"{safe_question}{author_append}"
 
         short_exp = explanation[:200] if explanation else ""
 
-        # Send the Poll to Target Group using question_parse_mode="HTML"
+        # Send the Poll 
         await context.bot.send_poll(
             chat_id=TARGET_GROUP_ID,
             question=poll_question,
@@ -193,15 +196,13 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             question_parse_mode="HTML"
         )
 
-        # Send long detailed explanation to Target Group if necessary
+        # --- UNLIMITED EXPLANATION LOGIC ---
         if len(explanation) > 200:
-            await context.bot.send_message(
-                chat_id=TARGET_GROUP_ID, 
-                text=f"📖 **DETAILED EXPLANATION:**\n\n{explanation}",
-                parse_mode="Markdown"
-            )
+            safe_exp = explanation.replace('<', '&lt;').replace('>', '&gt;')
+            long_exp_text = f"📖 <b>DETAILED EXPLANATION:</b>\n\n{safe_exp}"
+            # Uses the new helper function to send infinitely long explanations
+            await send_long_message(context, TARGET_GROUP_ID, long_exp_text, "HTML")
 
-        # Send success confirmation to you
         await context.bot.send_message(
             chat_id=source_chat_id, 
             text="✅ **Success!** Your quiz was flawlessly generated and posted to the group.",
