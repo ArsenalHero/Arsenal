@@ -12,9 +12,6 @@ TARGET_GROUP_ID = -1004211404152
 
 # --- COMMAND HANDLERS ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Only respond to commands in private DMs
-    if update.effective_chat.type != "private": return
-    
     welcome_text = (
         "👋 **Welcome to the ARSENAL QUIZMASTER BOT 🧿!**\n\n"
         "I am the official quiz submission bot. Send me a question here in our private chat, and I will publish it to the main group!\n\n"
@@ -27,8 +24,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.effective_chat.type != "private": return
-    
     help_text = (
         "📖 **How to format your questions:**\n\n"
         "Simply send a message in this format:\n\n"
@@ -48,8 +43,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.effective_chat.type != "private": return
-    
     status_text = (
         "🟢 **Bot Status:** Online & Active\n"
         f"🎯 **Publishing to Group:** `{TARGET_GROUP_ID}`\n"
@@ -131,7 +124,7 @@ async def send_long_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, te
         await context.bot.send_message(chat_id=chat_id, text=text[i:i + chunk_size], parse_mode=parse_mode)
 
 async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # 1. STOP IF NOT A PRIVATE DM
+    # Double-check: Stop if not a private DM
     if update.effective_chat.type != "private":
         return
 
@@ -160,7 +153,6 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         if raw_length > 300:
             long_question_text = f"📌 <b>QUESTION:</b>\n\n{safe_question}"
-            # Posts long question to the Target Group
             await send_long_message(context, TARGET_GROUP_ID, long_question_text, "HTML")
             poll_question = f"👇 Refer to the question above:{author_append}"
         else:
@@ -168,7 +160,7 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         short_exp = explanation[:200] if explanation else ""
 
-        # 2. POST THE QUIZ TO THE PUBLIC GROUP
+        # Post the quiz to the public group
         await context.bot.send_poll(
             chat_id=TARGET_GROUP_ID,
             question=poll_question,
@@ -180,7 +172,7 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             question_parse_mode="HTML"
         )
         
-        # 3. SEND SUCCESS MESSAGE TO THE USER'S DM
+        # Send success message to the user's DM
         await context.bot.send_message(chat_id=user_dm_id, text="✅ **Success!** Your quiz was published to the main group.", parse_mode="Markdown")
 
     except Exception as e:
@@ -189,10 +181,11 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 # --- FASTAPI WEBHOOK SERVER ---
 ptb = Application.builder().updater(None).token(BOT_TOKEN).build()
 
-ptb.add_handler(CommandHandler("start", start_command))
-ptb.add_handler(CommandHandler("help", help_command))
-ptb.add_handler(CommandHandler("status", status_command))
-ptb.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, create_upsc_quiz))
+# STRICT PRIVATE FILTERS ADDED HERE: The bot will now ignore group chats completely!
+ptb.add_handler(CommandHandler("start", start_command, filters=filters.ChatType.PRIVATE))
+ptb.add_handler(CommandHandler("help", help_command, filters=filters.ChatType.PRIVATE))
+ptb.add_handler(CommandHandler("status", status_command, filters=filters.ChatType.PRIVATE))
+ptb.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, create_upsc_quiz))
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
