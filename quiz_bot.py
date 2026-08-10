@@ -15,7 +15,7 @@ TARGET_GROUP_ID = -4211404152
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles the /start command with a friendly welcome message."""
     welcome_text = (
-        "👋 **Welcome to the ARSENAL QUIZ/POLL MASTER Bot!**\n\n"
+        "👋 **Welcome to the ARSENAL QUIZ OR POLL MASTER Bot!**\n\n"
         "I am here to help you effortlessly create and post beautiful polls directly to your Telegram group.\n\n"
         "Just send me a question with options, mark the correct answer with a ✅, and I will do the rest!\n\n"
         "👉 Tap /help to see the exact format and examples.\n"
