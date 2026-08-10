@@ -3,7 +3,7 @@ import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from telegram import Update, Poll
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # --- CONFIGURATION ---
 BOT_TOKEN = "8929947153:AAF8JIXltVTY3AZA8WZJfmr2CZDSlzTareE"
@@ -11,6 +11,47 @@ WEBHOOK_URL = "https://arsenalxx.onrender.com"
 # Your exact target group ID
 TARGET_GROUP_ID = -4211404152
 
+# --- COMMAND HANDLERS ---
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles the /start command with a friendly welcome message."""
+    welcome_text = (
+        "👋 **Welcome to the UPSC Quiz Maker Bot!**\n\n"
+        "I am here to help you effortlessly create and post beautiful polls directly to your Telegram group.\n\n"
+        "Just send me a question with options, mark the correct answer with a ✅, and I will do the rest!\n\n"
+        "👉 Tap /help to see the exact format and examples.\n"
+        "👉 Tap /status to check my connection."
+    )
+    await update.message.reply_text(welcome_text, parse_mode="Markdown")
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles the /help command to show users how to format their text."""
+    help_text = (
+        "📖 **How to format your questions:**\n\n"
+        "Simply send a message in this format:\n\n"
+        "`Consider the following statements:`\n"
+        "`1. First statement here.`\n"
+        "`2. Second statement here.`\n"
+        "`(a) 1 only`\n"
+        "`(b) 2 only✅`\n"
+        "`(c) Both 1 and 2`\n"
+        "`(d) Neither 1 nor 2`\n"
+        "`Explanation: Put your detailed explanation here.`\n\n"
+        "**Golden Rules:**\n"
+        "1️⃣ Always put a ✅ next to the correct option.\n"
+        "2️⃣ Do not put spaces between the option and the checkmark.\n"
+        "3️⃣ You can optionally include an explanation at the very bottom.\n\n"
+        "Once you send it, I will automatically convert it into a native quiz and post it to the target group!"
+    )
+    await update.message.reply_text(help_text, parse_mode="Markdown")
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles the /status command to check bot health and target group."""
+    status_text = (
+        "🟢 **Bot Status:** Online & Active\n"
+        f"🎯 **Target Group ID:** `{TARGET_GROUP_ID}`\n"
+        "🌐 **Server:** Render Webhooks"
+    )
+    await update.message.reply_text(status_text, parse_mode="Markdown")
 
 # --- UPSC SMART PARSER LOGIC ---
 def parse_upsc_question(text: str):
@@ -103,7 +144,8 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not parsed:
         await context.bot.send_message(
             chat_id=source_chat_id, 
-            text="❌ Could not parse the question. Make sure you included the ✅ checkmark."
+            text="❌ **Could not parse the question.**\n\nDid you forget the ✅ checkmark? Or perhaps there aren't enough options? Tap /help to see a formatting example.",
+            parse_mode="Markdown"
         )
         return
 
@@ -148,19 +190,28 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         # Send success confirmation to you
         await context.bot.send_message(
             chat_id=source_chat_id, 
-            text="✅ Quiz successfully generated and posted to the group!"
+            text="✅ **Success!** Your quiz was perfectly generated and posted to the group.",
+            parse_mode="Markdown"
         )
 
     except Exception as e:
         await context.bot.send_message(
             chat_id=source_chat_id, 
-            text=f"❌ Error creating UPSC quiz. Make sure the bot is an Admin in the target group. Error details: {e}"
+            text=f"❌ **Error posting to group.**\n\nMake sure the bot is an Admin in the target group. Error details: `{e}`",
+            parse_mode="Markdown"
         )
 
 
 # --- FASTAPI WEBHOOK SERVER ---
 
 ptb = Application.builder().updater(None).token(BOT_TOKEN).build()
+
+# Register the new commands
+ptb.add_handler(CommandHandler("start", start_command))
+ptb.add_handler(CommandHandler("help", help_command))
+ptb.add_handler(CommandHandler("status", status_command))
+
+# Register the text parser (ignores commands because of ~filters.COMMAND)
 ptb.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, create_upsc_quiz))
 
 @asynccontextmanager
