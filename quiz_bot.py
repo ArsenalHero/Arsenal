@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 BOT_TOKEN = "8929947153:AAF8JIXltVTY3AZA8WZJfmr2CZDSlzTareE"
 WEBHOOK_URL = "https://arsenalxx.onrender.com"
 # Your exact target group ID
-TARGET_GROUP_ID = 1004211404152
+TARGET_GROUP_ID = -1004211404152
 
 # --- COMMAND HANDLERS ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
