@@ -9,7 +9,7 @@ import uvicorn
 # 1. Put your actual Bot Token here
 BOT_TOKEN = "8929947153:AAF8JIXltVTY3AZA8WZJfmr2CZDSlzTareE" 
 # 2. Put the public URL that your free hosting provider gives you here
-WEBHOOK_URL = "https://your-app-name.onrender.com" 
+WEBHOOK_URL = "https://arsenalxx.onrender.com" 
 
 
 # --- YOUR BOT LOGIC (Unchanged) ---
