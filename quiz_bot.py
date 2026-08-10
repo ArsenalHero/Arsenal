@@ -18,9 +18,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "👋 **Welcome to the ARSENAL QUIZMASTER BOT 🧿!**\n\n"
         "I can publish text quizzes AND image quizzes directly to the main group!\n\n"
         "**How to use me:**\n"
-        "1. Paste your question text OR upload an image and put the text in the caption.\n"
-        "2. Mark the correct answer with a ✅.\n"
-        "3. I will instantly format it and post it to the group!\n\n"
+        "1. Send text with a ✅ next to the answer.\n"
+        "2. **[NEW]** Upload an image, and simply put the answer (`1`, `2`, `3`, or `4`) in the caption, followed by `Exp: your explanation`.\n\n"
         "👉 Tap /help to see the exact format."
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
@@ -30,19 +29,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     help_text = (
         "📖 **How to format your questions:**\n\n"
-        "Simply send a text or an image caption in this format:\n\n"
-        "`Consider the following statements:`\n"
-        "`1. First statement here.`\n"
-        "`2. Second statement here.`\n"
+        "**Method 1: Full Text**\n"
+        "`Consider the following...`\n"
         "`(a) 1 only`\n"
         "`(b) 2 only✅`\n"
-        "`(c) Both 1 and 2`\n"
-        "`(d) Neither 1 nor 2`\n"
-        "`Exp: Put your explanation here (max 200 chars).`\n\n"
-        "**Golden Rules:**\n"
-        "1️⃣ Always put a ✅ next to the correct option.\n"
-        "2️⃣ Use options like `(a)`, `(b)` or `1)`, `2)` so I don't confuse them with statements `1.` and `2.`.\n"
-        "3️⃣ Explanations are strictly kept inside the poll's pop-up box (200-char limit)."
+        "`Exp: Put your explanation here.`\n\n"
+        "**Method 2: Image Shortcut (Fastest)**\n"
+        "Upload a photo and set the caption to just the answer and explanation:\n"
+        "`2`\n"
+        "`Exp: Put your explanation here.`\n\n"
+        "*(I will automatically generate Option 1, 2, 3, 4 for the poll!)*"
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
@@ -52,12 +48,44 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     status_text = (
         "🟢 **Bot Status:** Online & Active\n"
         f"🎯 **Publishing to Group:** `{TARGET_GROUP_ID}`\n"
-        "📸 **Features:** Text & Image Parsing Enabled\n"
+        "📸 **Features:** Image Shortcut Mode Enabled\n"
         "⚡️ **Server:** Render Webhooks"
     )
     await update.message.reply_text(status_text, parse_mode="Markdown")
 
-# --- UPSC SMART PARSER LOGIC ---
+# --- IMAGE SHORTHAND PARSER ---
+def parse_shorthand_caption(text: str):
+    """
+    Detects if the user just typed '2' and 'Exp: ...' for an image caption.
+    Generates an automatic Option 1-4 poll.
+    """
+    # Matches a single 1-4 or a-d at the start, optionally followed by an explanation
+    match = re.match(r'^\s*(?:ans(?:wer)?\s*[:\-\.]?\s*)?([1-4a-dA-D])\s*(?:$|\n(.*))', text, re.IGNORECASE | re.DOTALL)
+    
+    if match:
+        ans = match.group(1).lower()
+        remainder = match.group(2) or ""
+        
+        # Map to option index (0 to 3)
+        if ans in ['1', 'a']: correct_id = 0
+        elif ans in ['2', 'b']: correct_id = 1
+        elif ans in ['3', 'c']: correct_id = 2
+        elif ans in ['4', 'd']: correct_id = 3
+        else: return None
+        
+        # Clean up the explanation (remove 'Exp:' if they wrote it)
+        explanation = remainder.strip()
+        explanation = re.sub(r'^(?:exp(?:lanation)?|notes?)\s*[:\-\.]?\s*', '', explanation, flags=re.IGNORECASE).strip()
+        
+        return {
+            "question": "👇 Please refer to the image above to answer the question.",
+            "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+            "correct_option_id": correct_id,
+            "explanation": explanation
+        }
+    return None
+
+# --- UPSC FULL TEXT PARSER LOGIC ---
 def parse_upsc_question(text: str, has_photo: bool = False):
     text = re.sub(r'(?m)^(\s*[\(\[]?[a-eA-E1-5][\)\]\.\:\-]+)\s*\n\s*(.*)', r'\1 \2', text)
     raw_lines = [line.strip() for line in text.split('\n') if line.strip()]
@@ -117,7 +145,6 @@ def parse_upsc_question(text: str, has_photo: bool = False):
 
     question_text = "\n".join(question_lines).strip()
     
-    # NEW: If there is an image but no typed question, auto-generate a question prompt!
     if not question_text and has_photo:
         question_text = "👇 Please refer to the image above to answer the question."
 
@@ -144,10 +171,10 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if update.effective_chat.type != "private":
         return
 
-    # 1. EXTRACT TEXT AND PHOTO (IF IT EXISTS)
+    # Extract text and photo ID
     if update.message.photo:
         raw_text = update.message.caption
-        photo_id = update.message.photo[-1].file_id # Gets the highest quality image
+        photo_id = update.message.photo[-1].file_id
     else:
         raw_text = update.message.text
         photo_id = None
@@ -155,20 +182,26 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     user_dm_id = update.effective_chat.id
 
     if not raw_text:
-        await context.bot.send_message(
-            chat_id=user_dm_id, 
-            text="❌ **Missing text!** If you send a photo, you must type the options and ✅ in the **caption**."
-        )
+        await context.bot.send_message(chat_id=user_dm_id, text="❌ **Missing text!** Please include the answer in the caption.")
         return
 
     author_name = update.effective_user.first_name
     if update.effective_user.last_name:
         author_name += f" {update.effective_user.last_name}"
 
-    parsed = parse_upsc_question(raw_text, has_photo=bool(photo_id))
+    parsed = None
+    
+    # 1. If it's a photo, try the new Shorthand Mode FIRST!
+    if photo_id:
+        parsed = parse_shorthand_caption(raw_text)
 
+    # 2. If it wasn't shorthand, try parsing it as a full text question
     if not parsed:
-        await context.bot.send_message(chat_id=user_dm_id, text="❌ **Could not parse.**\nDid you forget the ✅? Or maybe your options aren't formatted correctly? Try using `(a)`, `(b)` or `1)`, `2)`.")
+        parsed = parse_upsc_question(raw_text, has_photo=bool(photo_id))
+
+    # 3. If everything failed, reject it
+    if not parsed:
+        await context.bot.send_message(chat_id=user_dm_id, text="❌ **Could not parse.**\nDid you forget the ✅? Or if using an image, just type the answer number (1, 2, 3, or 4) in the caption!")
         return
 
     question_text = parsed["question"]
@@ -180,7 +213,7 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         safe_author = author_name.replace('<', '&lt;').replace('>', '&gt;')
         author_append = f"\n\n👤 <i>Quiz by: {safe_author}</i>"
         
-        # 2. POST THE PHOTO TO THE GROUP (IF IT EXISTS)
+        # Post photo to the group
         sent_photo_msg = None
         if photo_id:
             sent_photo_msg = await context.bot.send_photo(
@@ -192,8 +225,6 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         safe_question = question_text.replace('<', '&lt;').replace('>', '&gt;')
         raw_length = len(question_text) + len(f"\n\n👤 Quiz by: {author_name}")
-
-        # Link the follow-up messages to the photo if one exists
         reply_target_id = sent_photo_msg.message_id if sent_photo_msg else None
 
         if raw_length > 300:
@@ -205,7 +236,7 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         short_exp = explanation[:200] if explanation else ""
 
-        # 3. POST THE QUIZ (Reply to the photo if there is one)
+        # Post the actual poll
         await context.bot.send_poll(
             chat_id=TARGET_GROUP_ID,
             question=poll_question,
@@ -218,7 +249,7 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             reply_to_message_id=reply_target_id
         )
         
-        await context.bot.send_message(chat_id=user_dm_id, text="✅ **Success!** Your quiz (and image) was published to the main group.", parse_mode="Markdown")
+        await context.bot.send_message(chat_id=user_dm_id, text="✅ **Success!** Your quiz was perfectly published to the main group.", parse_mode="Markdown")
 
     except Exception as e:
         await context.bot.send_message(chat_id=user_dm_id, text=f"❌ **Error posting to group.**\nError details: `{e}`", parse_mode="Markdown")
@@ -226,7 +257,6 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 # --- FASTAPI WEBHOOK SERVER ---
 ptb = Application.builder().updater(None).token(BOT_TOKEN).build()
 
-# Filters allow TEXT and PHOTO, but only in PRIVATE chat, and ignoring commands
 ptb.add_handler(CommandHandler("start", start_command, filters=filters.ChatType.PRIVATE))
 ptb.add_handler(CommandHandler("help", help_command, filters=filters.ChatType.PRIVATE))
 ptb.add_handler(CommandHandler("status", status_command, filters=filters.ChatType.PRIVATE))
