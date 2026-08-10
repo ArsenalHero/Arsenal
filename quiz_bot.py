@@ -73,7 +73,9 @@ def parse_upsc_question(text: str):
             exp_start_idx = i
             break
 
-    opt_prefix_regex = re.compile(r'^\s*[\(\[]?([a-eA-E1-5])[\)\]\.\:\-]+\s*')
+    # UPGRADED REGEX: Explicitly excludes "1." and "2." formats so statements stay in the question box!
+    opt_prefix_regex = re.compile(r'^\s*(?:[\(\[]?[a-eA-E][\)\]\.\:\-]+|[\(\[]?[1-5][\)\]\:\-]+)\s*')
+    
     option_indices = [i for i, line in enumerate(raw_lines) if opt_prefix_regex.match(line)]
     
     valid_opts = [i for i in option_indices if abs(i - correct_line_idx) <= 6]
@@ -139,7 +141,6 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     text = update.message.text
     parsed = parse_upsc_question(text)
     
-    # The chat where the message was sent (can be any group, channel, or DM)
     current_chat_id = update.effective_chat.id
 
     author_name = update.effective_user.first_name
@@ -147,7 +148,6 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         author_name += f" {update.effective_user.last_name}"
 
     if not parsed:
-        # Ignore unparseable messages entirely to prevent spamming normal group chats
         return
 
     question_text = parsed["question"]
@@ -156,11 +156,10 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     explanation = parsed["explanation"]
 
     try:
-        # Step 1: Try to delete the user's raw message so the answer isn't spoiled
         try:
             await update.message.delete()
         except Exception:
-            pass # If the bot lacks admin delete permissions, it just ignores and continues
+            pass 
 
         safe_question = question_text.replace('<', '&lt;').replace('>', '&gt;')
         safe_author = author_name.replace('<', '&lt;').replace('>', '&gt;')
@@ -168,7 +167,6 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         
         raw_length = len(question_text) + len(f"\n\n👤 Quiz by: {author_name}")
 
-        # Step 2: Handle long questions
         if raw_length > 300:
             long_question_text = f"📌 <b>QUESTION:</b>\n\n{safe_question}"
             await send_long_message(context, current_chat_id, long_question_text, "HTML")
@@ -178,7 +176,6 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         short_exp = explanation[:200] if explanation else ""
 
-        # Step 3: Send the Poll into the current chat
         await context.bot.send_poll(
             chat_id=current_chat_id,
             question=poll_question,
