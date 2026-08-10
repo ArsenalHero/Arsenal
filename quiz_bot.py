@@ -8,17 +8,16 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # --- CONFIGURATION ---
 BOT_TOKEN = "8929947153:AAF8JIXltVTY3AZA8WZJfmr2CZDSlzTareE"
 WEBHOOK_URL = "https://arsenalxx.onrender.com"
+TARGET_GROUP_ID = -1004211404152
 
 # --- COMMAND HANDLERS ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     welcome_text = (
         "👋 **Welcome to the ARSENAL QUIZMASTER BOT 🧿!**\n\n"
-        "I can instantly convert raw text into beautiful Telegram Polls.\n\n"
-        "**How to use me:**\n"
-        "1. Add me to ANY group and make me an Admin (so I can delete messages).\n"
-        "2. Paste your question with options and mark the answer with a ✅.\n"
-        "3. I will delete your text and replace it with a native Quiz!\n\n"
-        "👉 Tap /help to see the exact format and examples."
+        "I am here to help you effortlessly create and post beautiful polls directly to your Telegram group.\n\n"
+        "Just send me a question with options, mark the correct answer with a ✅, and I will do the rest!\n\n"
+        "👉 Tap /help to see the exact format and examples.\n"
+        "👉 Tap /status to check my connection."
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
@@ -44,7 +43,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     status_text = (
         "🟢 **Bot Status:** Online & Active\n"
-        "🌐 **Mode:** Generalized (Works in any group)\n"
+        f"🎯 **Target Group ID:** `{TARGET_GROUP_ID}`\n"
         "⚡️ **Server:** Render Webhooks"
     )
     await update.message.reply_text(status_text, parse_mode="Markdown")
@@ -141,13 +140,18 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     text = update.message.text
     parsed = parse_upsc_question(text)
     
-    current_chat_id = update.effective_chat.id
+    source_chat_id = update.effective_chat.id
 
     author_name = update.effective_user.first_name
     if update.effective_user.last_name:
         author_name += f" {update.effective_user.last_name}"
 
     if not parsed:
+        await context.bot.send_message(
+            chat_id=source_chat_id, 
+            text="❌ **Could not parse the question.**\n\nDid you forget the ✅ checkmark? Or perhaps there aren't enough options? Tap /help to see a formatting example.",
+            parse_mode="Markdown"
+        )
         return
 
     question_text = parsed["question"]
@@ -156,28 +160,25 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     explanation = parsed["explanation"]
 
     try:
-        try:
-            await update.message.delete()
-        except Exception:
-            pass 
-
         safe_question = question_text.replace('<', '&lt;').replace('>', '&gt;')
         safe_author = author_name.replace('<', '&lt;').replace('>', '&gt;')
         author_append = f"\n\n👤 <i>Quiz by: {safe_author}</i>"
         
         raw_length = len(question_text) + len(f"\n\n👤 Quiz by: {author_name}")
 
+        # Send long question to the Target Group if needed
         if raw_length > 300:
             long_question_text = f"📌 <b>QUESTION:</b>\n\n{safe_question}"
-            await send_long_message(context, current_chat_id, long_question_text, "HTML")
+            await send_long_message(context, TARGET_GROUP_ID, long_question_text, "HTML")
             poll_question = f"👇 Refer to the question above:{author_append}"
         else:
             poll_question = f"{safe_question}{author_append}"
 
         short_exp = explanation[:200] if explanation else ""
 
+        # Send the Poll to the Target Group
         await context.bot.send_poll(
-            chat_id=current_chat_id,
+            chat_id=TARGET_GROUP_ID,
             question=poll_question,
             options=options,
             type=Poll.QUIZ,
@@ -187,8 +188,19 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             question_parse_mode="HTML"
         )
 
+        # Send success message back to you in your DM/Admin chat
+        await context.bot.send_message(
+            chat_id=source_chat_id, 
+            text="✅ **Success!** Your quiz was flawlessly generated and posted to the target group.",
+            parse_mode="Markdown"
+        )
+
     except Exception as e:
-        print(f"Error creating quiz in chat {current_chat_id}: {e}")
+        await context.bot.send_message(
+            chat_id=source_chat_id, 
+            text=f"❌ **Error posting to group.**\n\nMake sure the bot is an Admin in the target group. Error details: `{e}`",
+            parse_mode="Markdown"
+        )
 
 # --- FASTAPI WEBHOOK SERVER ---
 
