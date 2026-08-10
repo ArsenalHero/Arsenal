@@ -8,14 +8,12 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # --- CONFIGURATION ---
 BOT_TOKEN = "8929947153:AAF8JIXltVTY3AZA8WZJfmr2CZDSlzTareE"
 WEBHOOK_URL = "https://arsenalxx.onrender.com"
-# Your exact target group ID
-TARGET_GROUP_ID = -4211404152
+TARGET_GROUP_ID = -1004211404152
 
 # --- COMMAND HANDLERS ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles the /start command with a friendly welcome message."""
     welcome_text = (
-        "👋 **Welcome to the ARSENAL QUIZ OR POLL MASTER Bot!**\n\n"
+        "👋 **Welcome to the ARSENAL QUIZMASTER BOT 🧿!**\n\n"
         "I am here to help you effortlessly create and post beautiful polls directly to your Telegram group.\n\n"
         "Just send me a question with options, mark the correct answer with a ✅, and I will do the rest!\n\n"
         "👉 Tap /help to see the exact format and examples.\n"
@@ -24,7 +22,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles the /help command to show users how to format their text."""
     help_text = (
         "📖 **How to format your questions:**\n\n"
         "Simply send a message in this format:\n\n"
@@ -38,14 +35,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "`Explanation: Put your detailed explanation here.`\n\n"
         "**Golden Rules:**\n"
         "1️⃣ Always put a ✅ next to the correct option.\n"
-        "2️⃣ Do not put spaces between the option and the checkmark.\n"
+        "2️⃣ I can understand options like a., (a), 1), A-, etc.\n"
         "3️⃣ You can optionally include an explanation at the very bottom.\n\n"
-        "Once you send it, I will automatically convert it into a native quiz and post it to the target group!"
+        "Once you send it, I will automatically convert it into a native quiz, post it to the group, and tag you as the author!"
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles the /status command to check bot health and target group."""
     status_text = (
         "🟢 **Bot Status:** Online & Active\n"
         f"🎯 **Target Group ID:** `{TARGET_GROUP_ID}`\n"
@@ -55,9 +51,8 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 # --- UPSC SMART PARSER LOGIC ---
 def parse_upsc_question(text: str):
-    """
-    Parses multi-line UPSC questions, extracting the question, options, correct answer, and explanation.
-    """
+    text = re.sub(r'(?m)^(\s*[\(\[]?[a-eA-E1-5][\)\]\.\:\-]+)\s*\n\s*(.*)', r'\1 \2', text)
+
     raw_lines = [line.strip() for line in text.split('\n') if line.strip()]
     if not raw_lines:
         return None
@@ -90,25 +85,28 @@ def parse_upsc_question(text: str):
     if correct_line_idx == -1:
         return None  
 
-    opt_prefix_regex = re.compile(r'^\s*[\(\[]?([a-dA-D1-4])[\)\.\:\-]\s*')
+    opt_prefix_regex = re.compile(r'^\s*[\(\[]?([a-eA-E1-5])[\)\]\.\:\-]+\s*')
     option_indices = [i for i, line in enumerate(content_lines) if opt_prefix_regex.match(line)]
 
     if option_indices:
-        first_opt_idx = option_indices[0]
-        last_opt_idx = option_indices[-1]
-        
-        if correct_line_idx > last_opt_idx:
-            last_opt_idx = correct_line_idx
-
-        question_lines = content_lines[:first_opt_idx]
-        raw_options = content_lines[first_opt_idx:last_opt_idx + 1]
-        
-        if exp_index == -1 and last_opt_idx + 1 < len(content_lines):
-            explanation = "\n".join(content_lines[last_opt_idx + 1:]).strip()
+        valid_opt_indices = [i for i in option_indices if correct_line_idx - 6 <= i <= correct_line_idx + 6]
+        if valid_opt_indices:
+            first_opt_idx = min(valid_opt_indices[0], correct_line_idx)
+            last_opt_idx = max(valid_opt_indices[-1], correct_line_idx)
+            
+            question_lines = content_lines[:first_opt_idx]
+            raw_options = content_lines[first_opt_idx:last_opt_idx + 1]
+            
+            if exp_index == -1 and last_opt_idx + 1 < len(content_lines):
+                explanation = "\n".join(content_lines[last_opt_idx + 1:]).strip()
+        else:
+            start_opt = max(0, correct_line_idx - 3)
+            end_opt = min(len(content_lines) - 1, correct_line_idx + 3)
+            question_lines = content_lines[:start_opt]
+            raw_options = content_lines[start_opt:end_opt + 1]
     else:
         start_opt = max(0, correct_line_idx - 3)
         end_opt = min(len(content_lines) - 1, correct_line_idx + 3)
-        
         question_lines = content_lines[:start_opt]
         raw_options = content_lines[start_opt:end_opt + 1]
         
@@ -141,6 +139,11 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     parsed = parse_upsc_question(text)
     source_chat_id = update.effective_chat.id
 
+    # Extract Author Name
+    author_name = update.effective_user.first_name
+    if update.effective_user.last_name:
+        author_name += f" {update.effective_user.last_name}"
+
     if not parsed:
         await context.bot.send_message(
             chat_id=source_chat_id, 
@@ -155,20 +158,30 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     explanation = parsed["explanation"]
 
     try:
-        # Handle Telegram 300-char question limit (Sends to Target Group)
-        if len(question_text) > 300:
+        # Sanitize HTML tags just in case they are in the question or author name
+        safe_question = question_text.replace('<', '&lt;').replace('>', '&gt;')
+        safe_author = author_name.replace('<', '&lt;').replace('>', '&gt;')
+        
+        # Format the author line in HTML italics
+        author_append = f"\n\n👤 <i>Quiz by: {safe_author}</i>"
+        
+        # Telegram Poll limit is 300 characters (we check the raw length without HTML tags)
+        raw_length = len(question_text) + len(f"\n\n👤 Quiz by: {author_name}")
+
+        # Handle Telegram 300-char question limit
+        if raw_length > 300:
             await context.bot.send_message(
                 chat_id=TARGET_GROUP_ID, 
-                text=f"📌 **QUESTION:**\n\n{question_text}", 
-                parse_mode="Markdown"
+                text=f"📌 <b>QUESTION:</b>\n\n{safe_question}", 
+                parse_mode="HTML"
             )
-            poll_question = "👇 Refer to the question above and select the correct option:"
+            poll_question = f"👇 Refer to the question above:{author_append}"
         else:
-            poll_question = question_text
+            poll_question = f"{safe_question}{author_append}"
 
         short_exp = explanation[:200] if explanation else ""
 
-        # Send the Poll to Target Group
+        # Send the Poll to Target Group using question_parse_mode="HTML"
         await context.bot.send_poll(
             chat_id=TARGET_GROUP_ID,
             question=poll_question,
@@ -176,10 +189,11 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             type=Poll.QUIZ,
             correct_option_id=correct_id,
             explanation=short_exp,
-            is_anonymous=False
+            is_anonymous=False,
+            question_parse_mode="HTML"
         )
 
-        # Send long detailed explanation to Target Group
+        # Send long detailed explanation to Target Group if necessary
         if len(explanation) > 200:
             await context.bot.send_message(
                 chat_id=TARGET_GROUP_ID, 
@@ -190,7 +204,7 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         # Send success confirmation to you
         await context.bot.send_message(
             chat_id=source_chat_id, 
-            text="✅ **Success!** Your quiz was perfectly generated and posted to the group.",
+            text="✅ **Success!** Your quiz was flawlessly generated and posted to the group.",
             parse_mode="Markdown"
         )
 
@@ -201,22 +215,17 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             parse_mode="Markdown"
         )
 
-
 # --- FASTAPI WEBHOOK SERVER ---
 
 ptb = Application.builder().updater(None).token(BOT_TOKEN).build()
 
-# Register the new commands
 ptb.add_handler(CommandHandler("start", start_command))
 ptb.add_handler(CommandHandler("help", help_command))
 ptb.add_handler(CommandHandler("status", status_command))
-
-# Register the text parser (ignores commands because of ~filters.COMMAND)
 ptb.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, create_upsc_quiz))
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Register Webhook URL
     await ptb.bot.set_webhook(url=WEBHOOK_URL)
     async with ptb:
         await ptb.start()
