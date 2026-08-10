@@ -32,11 +32,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "`(b) 2 only✅`\n"
         "`(c) Both 1 and 2`\n"
         "`(d) Neither 1 nor 2`\n"
-        "`Explanation: Put your explanation here (max 200 chars).`\n\n"
+        "`Explanation: Put your detailed explanation here.`\n\n"
         "**Golden Rules:**\n"
         "1️⃣ Always put a ✅ next to the correct option.\n"
         "2️⃣ I can understand options like a., (a), 1), A-, etc.\n"
-        "3️⃣ Explanations are strictly kept inside the poll's pop-up box (200-char limit).\n\n"
+        "3️⃣ You can optionally include an explanation at the very bottom.\n\n"
         "Once you send it, I will automatically convert it into a native quiz, post it to the group, and tag you as the author!"
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
@@ -51,16 +51,33 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 # --- UPSC SMART PARSER LOGIC ---
 def parse_upsc_question(text: str):
-    # 1. SMART MERGE: fixes options split onto a new line accidentally
     text = re.sub(r'(?m)^(\s*[\(\[]?[a-eA-E1-5][\)\]\.\:\-]+)\s*\n\s*(.*)', r'\1 \2', text)
 
     raw_lines = [line.strip() for line in text.split('\n') if line.strip()]
     if not raw_lines:
         return None
 
-    # 2. Find Correct line
-    correct_line_idx = -1
+    explanation = ""
+    content_lines = []
+    
+    exp_pattern = re.compile(r'^(explanation|exp|ans|answer|solution|notes?)[\s\:\-]', re.IGNORECASE)
+    exp_index = -1
+    
     for i, line in enumerate(raw_lines):
+        if exp_pattern.match(line):
+            exp_index = i
+            break
+            
+    if exp_index != -1:
+        content_lines = raw_lines[:exp_index]
+        exp_lines = raw_lines[exp_index:]
+        exp_lines[0] = exp_pattern.sub('', exp_lines[0]).strip()
+        explanation = "\n".join(exp_lines).strip()
+    else:
+        content_lines = raw_lines
+
+    correct_line_idx = -1
+    for i, line in enumerate(content_lines):
         if '✅' in line:
             correct_line_idx = i
             break
@@ -68,51 +85,33 @@ def parse_upsc_question(text: str):
     if correct_line_idx == -1:
         return None  
 
-    # 3. Find Explanation start
-    exp_pattern = re.compile(r'^(explanation|exp|ans|answer|solution|notes?)[\s\:\-]', re.IGNORECASE)
-    exp_start_idx = -1
-    for i in range(correct_line_idx + 1, len(raw_lines)):
-        if exp_pattern.match(raw_lines[i]):
-            exp_start_idx = i
-            break
-
-    # 4. Find Option Boundaries
     opt_prefix_regex = re.compile(r'^\s*[\(\[]?([a-eA-E1-5])[\)\]\.\:\-]+\s*')
-    option_indices = [i for i, line in enumerate(raw_lines) if opt_prefix_regex.match(line)]
-    
-    valid_opts = [i for i in option_indices if abs(i - correct_line_idx) <= 6]
-    
-    if valid_opts:
-        first_opt_idx = min(valid_opts[0], correct_line_idx)
-        last_opt_idx = max(valid_opts[-1], correct_line_idx)
-        
-        # If no explicit explanation prefix, assume explanation is everything after the last option
-        if exp_start_idx == -1 and last_opt_idx + 1 < len(raw_lines):
-            exp_start_idx = last_opt_idx + 1
-    else:
-        # Fallback if there are no option prefixes
-        first_opt_idx = max(0, correct_line_idx - 3)
-        if first_opt_idx == 0 and correct_line_idx > 0:
-            first_opt_idx = 1 # Protect the question line
+    option_indices = [i for i, line in enumerate(content_lines) if opt_prefix_regex.match(line)]
+
+    if option_indices:
+        valid_opt_indices = [i for i in option_indices if correct_line_idx - 6 <= i <= correct_line_idx + 6]
+        if valid_opt_indices:
+            first_opt_idx = min(valid_opt_indices[0], correct_line_idx)
+            last_opt_idx = max(valid_opt_indices[-1], correct_line_idx)
             
-        if exp_start_idx != -1:
-            last_opt_idx = exp_start_idx - 1
+            question_lines = content_lines[:first_opt_idx]
+            raw_options = content_lines[first_opt_idx:last_opt_idx + 1]
+            
+            if exp_index == -1 and last_opt_idx + 1 < len(content_lines):
+                explanation = "\n".join(content_lines[last_opt_idx + 1:]).strip()
         else:
-            last_opt_idx = min(len(raw_lines) - 1, correct_line_idx + max(0, 3 - (correct_line_idx - first_opt_idx)))
-            if last_opt_idx + 1 < len(raw_lines):
-                exp_start_idx = last_opt_idx + 1
-
-    question_lines = raw_lines[:first_opt_idx]
-    
-    # Strictly isolate options
-    raw_options = raw_lines[first_opt_idx:(last_opt_idx + 1) if exp_start_idx == -1 else exp_start_idx]
-
-    # Strictly isolate explanation
-    explanation = ""
-    if exp_start_idx != -1 and exp_start_idx < len(raw_lines):
-        exp_lines = raw_lines[exp_start_idx:]
-        exp_lines[0] = exp_pattern.sub('', exp_lines[0]).strip()
-        explanation = "\n".join(exp_lines).strip()
+            start_opt = max(0, correct_line_idx - 3)
+            end_opt = min(len(content_lines) - 1, correct_line_idx + 3)
+            question_lines = content_lines[:start_opt]
+            raw_options = content_lines[start_opt:end_opt + 1]
+    else:
+        start_opt = max(0, correct_line_idx - 3)
+        end_opt = min(len(content_lines) - 1, correct_line_idx + 3)
+        question_lines = content_lines[:start_opt]
+        raw_options = content_lines[start_opt:end_opt + 1]
+        
+        if exp_index == -1 and end_opt + 1 < len(content_lines):
+            explanation = "\n".join(content_lines[end_opt + 1:]).strip()
 
     options = []
     correct_option_id = -1
@@ -135,21 +134,12 @@ def parse_upsc_question(text: str):
         "explanation": explanation
     }
 
-async def send_long_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str, parse_mode: str = "HTML"):
-    """Helper function to bypass Telegram's 4096 character limit for extremely long questions."""
-    chunk_size = 4000
-    for i in range(0, len(text), chunk_size):
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=text[i:i + chunk_size],
-            parse_mode=parse_mode
-        )
-
 async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text
     parsed = parse_upsc_question(text)
     source_chat_id = update.effective_chat.id
 
+    # Extract Author Name
     author_name = update.effective_user.first_name
     if update.effective_user.last_name:
         author_name += f" {update.effective_user.last_name}"
@@ -168,26 +158,30 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     explanation = parsed["explanation"]
 
     try:
+        # Sanitize HTML tags just in case they are in the question or author name
         safe_question = question_text.replace('<', '&lt;').replace('>', '&gt;')
         safe_author = author_name.replace('<', '&lt;').replace('>', '&gt;')
+        
+        # Format the author line in HTML italics
         author_append = f"\n\n👤 <i>Quiz by: {safe_author}</i>"
         
+        # Telegram Poll limit is 300 characters (we check the raw length without HTML tags)
         raw_length = len(question_text) + len(f"\n\n👤 Quiz by: {author_name}")
 
-        # --- LONG QUESTION LOGIC ---
+        # Handle Telegram 300-char question limit
         if raw_length > 300:
-            long_question_text = f"📌 <b>QUESTION:</b>\n\n{safe_question}"
-            # Sends the question in a normal text message above the poll
-            await send_long_message(context, TARGET_GROUP_ID, long_question_text, "HTML")
+            await context.bot.send_message(
+                chat_id=TARGET_GROUP_ID, 
+                text=f"📌 <b>QUESTION:</b>\n\n{safe_question}", 
+                parse_mode="HTML"
+            )
             poll_question = f"👇 Refer to the question above:{author_append}"
         else:
             poll_question = f"{safe_question}{author_append}"
 
-        # --- STRICT EXPLANATION LIMIT ---
-        # Forces explanation into the poll's 200-character box and cuts off the rest.
         short_exp = explanation[:200] if explanation else ""
 
-        # Send the Poll 
+        # Send the Poll to Target Group using question_parse_mode="HTML"
         await context.bot.send_poll(
             chat_id=TARGET_GROUP_ID,
             question=poll_question,
@@ -199,6 +193,15 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             question_parse_mode="HTML"
         )
 
+        # Send long detailed explanation to Target Group if necessary
+        if len(explanation) > 200:
+            await context.bot.send_message(
+                chat_id=TARGET_GROUP_ID, 
+                text=f"📖 **DETAILED EXPLANATION:**\n\n{explanation}",
+                parse_mode="Markdown"
+            )
+
+        # Send success confirmation to you
         await context.bot.send_message(
             chat_id=source_chat_id, 
             text="✅ **Success!** Your quiz was flawlessly generated and posted to the group.",
