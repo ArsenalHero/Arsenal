@@ -8,62 +8,43 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # --- CONFIGURATION ---
 BOT_TOKEN = "8929947153:AAF8JIXltVTY3AZA8WZJfmr2CZDSlzTareE"
 WEBHOOK_URL = "https://arsenalxx.onrender.com"
-TARGET_GROUP_ID = -1004211404152
+TARGET_GROUP_ID = -1004211404152 # We will fix this in Step 3!
 
 # --- COMMAND HANDLERS ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     welcome_text = (
         "👋 **Welcome to the ARSENAL QUIZMASTER BOT 🧿!**\n\n"
-        "I am here to help you effortlessly create and post beautiful polls directly to your Telegram group.\n\n"
-        "Just send me a question with options, mark the correct answer with a ✅, and I will do the rest!\n\n"
-        "👉 Tap /help to see the exact format and examples.\n"
+        "Just send me a question with options, mark the correct answer with a ✅, and I will post it!\n\n"
+        "👉 Tap /help to see the exact format.\n"
         "👉 Tap /status to check my connection."
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
+async def getid_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """A diagnostic command to find the true ID of any chat."""
+    chat_id = update.effective_chat.id
+    await update.message.reply_text(f"🔍 **The true ID of this chat is:**\n`{chat_id}`", parse_mode="Markdown")
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    help_text = (
-        "📖 **How to format your questions:**\n\n"
-        "Simply send a message in this format:\n\n"
-        "`Consider the following statements:`\n"
-        "`First statement here.`\n"
-        "`Second statement here.`\n"
-        "`(a) 1 only`\n"
-        "`(b) 2 only✅`\n"
-        "`(c) Both 1 and 2`\n"
-        "`(d) Neither 1 nor 2`\n"
-        "`Explanation: Put your explanation here (max 200 chars).`\n\n"
-        "**Golden Rules:**\n"
-        "1️⃣ Always put a ✅ next to the correct option.\n"
-        "2️⃣ I can understand options like a., (a), 1), A-, etc.\n"
-        "3️⃣ Explanations are strictly kept inside the poll's pop-up box (200-char limit)."
-    )
-    await update.message.reply_text(help_text, parse_mode="Markdown")
+    help_text = "📖 Send a question with options and a ✅ next to the right answer. Explanation at the bottom!"
+    await update.message.reply_text(help_text)
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    status_text = (
-        "🟢 **Bot Status:** Online & Active\n"
-        f"🎯 **Target Group ID:** `{TARGET_GROUP_ID}`\n"
-        "⚡️ **Server:** Render Webhooks"
-    )
+    status_text = f"🟢 **Bot Online**\n🎯 **Target Group ID:** `{TARGET_GROUP_ID}`\n⚡️ **Server:** Render"
     await update.message.reply_text(status_text, parse_mode="Markdown")
 
 # --- UPSC SMART PARSER LOGIC ---
 def parse_upsc_question(text: str):
     text = re.sub(r'(?m)^(\s*[\(\[]?[a-eA-E1-5][\)\]\.\:\-]+)\s*\n\s*(.*)', r'\1 \2', text)
-
     raw_lines = [line.strip() for line in text.split('\n') if line.strip()]
-    if not raw_lines:
-        return None
+    if not raw_lines: return None
 
     correct_line_idx = -1
     for i, line in enumerate(raw_lines):
         if '✅' in line:
             correct_line_idx = i
             break
-
-    if correct_line_idx == -1:
-        return None  
+    if correct_line_idx == -1: return None  
 
     exp_pattern = re.compile(r'^(explanation|exp|ans|answer|solution|notes?)[\s\:\-]', re.IGNORECASE)
     exp_start_idx = -1
@@ -72,9 +53,7 @@ def parse_upsc_question(text: str):
             exp_start_idx = i
             break
 
-    # UPGRADED REGEX: Explicitly excludes "1." and "2." formats so statements stay in the question box!
     opt_prefix_regex = re.compile(r'^\s*(?:[\(\[]?[a-eA-E][\)\]\.\:\-]+|[\(\[]?[1-5][\)\]\:\-]+)\s*')
-    
     option_indices = [i for i, line in enumerate(raw_lines) if opt_prefix_regex.match(line)]
     
     valid_opts = [i for i in option_indices if abs(i - correct_line_idx) <= 6]
@@ -82,14 +61,12 @@ def parse_upsc_question(text: str):
     if valid_opts:
         first_opt_idx = min(valid_opts[0], correct_line_idx)
         last_opt_idx = max(valid_opts[-1], correct_line_idx)
-        
         if exp_start_idx == -1 and last_opt_idx + 1 < len(raw_lines):
             exp_start_idx = last_opt_idx + 1
     else:
         first_opt_idx = max(0, correct_line_idx - 3)
         if first_opt_idx == 0 and correct_line_idx > 0:
             first_opt_idx = 1
-            
         if exp_start_idx != -1:
             last_opt_idx = exp_start_idx - 1
         else:
@@ -108,7 +85,6 @@ def parse_upsc_question(text: str):
 
     options = []
     correct_option_id = -1
-
     for i, opt_line in enumerate(raw_options):
         if '✅' in opt_line:
             correct_option_id = i
@@ -116,9 +92,7 @@ def parse_upsc_question(text: str):
         options.append(clean_opt[:100])  
 
     question_text = "\n".join(question_lines).strip()
-
-    if not question_text or len(options) < 2 or correct_option_id == -1:
-        return None
+    if not question_text or len(options) < 2 or correct_option_id == -1: return None
 
     return {
         "question": question_text,
@@ -130,16 +104,11 @@ def parse_upsc_question(text: str):
 async def send_long_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str, parse_mode: str = "HTML"):
     chunk_size = 4000
     for i in range(0, len(text), chunk_size):
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=text[i:i + chunk_size],
-            parse_mode=parse_mode
-        )
+        await context.bot.send_message(chat_id=chat_id, text=text[i:i + chunk_size], parse_mode=parse_mode)
 
 async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = update.message.text
     parsed = parse_upsc_question(text)
-    
     source_chat_id = update.effective_chat.id
 
     author_name = update.effective_user.first_name
@@ -147,11 +116,7 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         author_name += f" {update.effective_user.last_name}"
 
     if not parsed:
-        await context.bot.send_message(
-            chat_id=source_chat_id, 
-            text="❌ **Could not parse the question.**\n\nDid you forget the ✅ checkmark? Or perhaps there aren't enough options? Tap /help to see a formatting example.",
-            parse_mode="Markdown"
-        )
+        await context.bot.send_message(chat_id=source_chat_id, text="❌ Could not parse the question. Did you forget the ✅?")
         return
 
     question_text = parsed["question"]
@@ -163,10 +128,8 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         safe_question = question_text.replace('<', '&lt;').replace('>', '&gt;')
         safe_author = author_name.replace('<', '&lt;').replace('>', '&gt;')
         author_append = f"\n\n👤 <i>Quiz by: {safe_author}</i>"
-        
         raw_length = len(question_text) + len(f"\n\n👤 Quiz by: {author_name}")
 
-        # Send long question to the Target Group if needed
         if raw_length > 300:
             long_question_text = f"📌 <b>QUESTION:</b>\n\n{safe_question}"
             await send_long_message(context, TARGET_GROUP_ID, long_question_text, "HTML")
@@ -176,7 +139,6 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         short_exp = explanation[:200] if explanation else ""
 
-        # Send the Poll to the Target Group
         await context.bot.send_poll(
             chat_id=TARGET_GROUP_ID,
             question=poll_question,
@@ -187,28 +149,18 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             is_anonymous=False,
             question_parse_mode="HTML"
         )
-
-        # Send success message back to you in your DM/Admin chat
-        await context.bot.send_message(
-            chat_id=source_chat_id, 
-            text="✅ **Success!** Your quiz was flawlessly generated and posted to the target group.",
-            parse_mode="Markdown"
-        )
+        await context.bot.send_message(chat_id=source_chat_id, text="✅ **Success!** Your quiz was posted to the target group.", parse_mode="Markdown")
 
     except Exception as e:
-        await context.bot.send_message(
-            chat_id=source_chat_id, 
-            text=f"❌ **Error posting to group.**\n\nMake sure the bot is an Admin in the target group. Error details: `{e}`",
-            parse_mode="Markdown"
-        )
+        await context.bot.send_message(chat_id=source_chat_id, text=f"❌ **Error posting to group.**\nMake sure the bot is an Admin in the target group.\nError details: `{e}`", parse_mode="Markdown")
 
 # --- FASTAPI WEBHOOK SERVER ---
-
 ptb = Application.builder().updater(None).token(BOT_TOKEN).build()
 
 ptb.add_handler(CommandHandler("start", start_command))
 ptb.add_handler(CommandHandler("help", help_command))
 ptb.add_handler(CommandHandler("status", status_command))
+ptb.add_handler(CommandHandler("getid", getid_command)) # <-- NEW COMMAND ADDED
 ptb.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, create_upsc_quiz))
 
 @asynccontextmanager
