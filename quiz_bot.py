@@ -19,7 +19,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "I can publish text quizzes AND image quizzes directly to the main group!\n\n"
         "**How to use me:**\n"
         "1. Send text with a ✅ next to the answer.\n"
-        "2. **[NEW]** Upload an image, and simply put the answer (`1`, `2`, `3`, or `4`) in the caption, followed by `Exp: your explanation`.\n\n"
+        "2. Upload an image, and put the answer (`1`, `2`, `3`, or `4`) in the caption.\n\n"
         "👉 Tap /help to see the exact format."
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
@@ -29,16 +29,18 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     help_text = (
         "📖 **How to format your questions:**\n\n"
-        "**Method 1: Full Text**\n"
-        "`Consider the following...`\n"
-        "`(a) 1 only`\n"
-        "`(b) 2 only✅`\n"
-        "`Exp: Put your explanation here.`\n\n"
-        "**Method 2: Image Shortcut (Fastest)**\n"
+        "**Method 1: Text (With or Without a,b,c,d)**\n"
+        "`1. Statement one.`\n"
+        "`2. Statement two.`\n"
+        "`Only 1`\n"
+        "`Only 2✅`\n"
+        "`Both 1 and 2`\n"
+        "`None`\n"
+        "`Explanation: Put your explanation here.`\n\n"
+        "**Method 2: Image Shortcut**\n"
         "Upload a photo and set the caption to just the answer and explanation:\n"
         "`2`\n"
-        "`Exp: Put your explanation here.`\n\n"
-        "*(I will automatically generate Option 1, 2, 3, 4 for the poll!)*"
+        "`Exp: Put your explanation here.`"
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
@@ -48,32 +50,25 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     status_text = (
         "🟢 **Bot Status:** Online & Active\n"
         f"🎯 **Publishing to Group:** `{TARGET_GROUP_ID}`\n"
-        "📸 **Features:** Image Shortcut Mode Enabled\n"
+        "🧠 **Features:** Advanced UPSC Vocabulary Recognition Enabled\n"
         "⚡️ **Server:** Render Webhooks"
     )
     await update.message.reply_text(status_text, parse_mode="Markdown")
 
 # --- IMAGE SHORTHAND PARSER ---
 def parse_shorthand_caption(text: str):
-    """
-    Detects if the user just typed '2' and 'Exp: ...' for an image caption.
-    Generates an automatic Option 1-4 poll.
-    """
-    # Matches a single 1-4 or a-d at the start, optionally followed by an explanation
     match = re.match(r'^\s*(?:ans(?:wer)?\s*[:\-\.]?\s*)?([1-4a-dA-D])\s*(?:$|\n(.*))', text, re.IGNORECASE | re.DOTALL)
     
     if match:
         ans = match.group(1).lower()
         remainder = match.group(2) or ""
         
-        # Map to option index (0 to 3)
         if ans in ['1', 'a']: correct_id = 0
         elif ans in ['2', 'b']: correct_id = 1
         elif ans in ['3', 'c']: correct_id = 2
         elif ans in ['4', 'd']: correct_id = 3
         else: return None
         
-        # Clean up the explanation (remove 'Exp:' if they wrote it)
         explanation = remainder.strip()
         explanation = re.sub(r'^(?:exp(?:lanation)?|notes?)\s*[:\-\.]?\s*', '', explanation, flags=re.IGNORECASE).strip()
         
@@ -87,7 +82,17 @@ def parse_shorthand_caption(text: str):
 
 # --- UPSC FULL TEXT PARSER LOGIC ---
 def parse_upsc_question(text: str, has_photo: bool = False):
-    text = re.sub(r'(?m)^(\s*[\(\[]?[a-eA-E1-5][\)\]\.\:\-]+)\s*\n\s*(.*)', r'\1 \2', text)
+    
+    # --- 🛠️ STRICT PDF AUTO-CLEANER 🛠️ ---
+    # Un-flattens numbered statements ONLY (1., 2., etc.)
+    text = re.sub(r'[ \t]+(\(?\d{1,2}[\)\.]\s+)', r'\n\1', text)
+    # Un-flattens lettered options if they exist (a., b., etc.)
+    text = re.sub(r'[ \t]+(\(?(?:[a-eA-E])[\)\.]\s+)', r'\n\1', text)
+    # Un-flattens common Exam perspective keywords if they got merged into one line
+    text = re.sub(r'[ \t]+(Only\s+[1-4]\b|Only\s+(?:one|two|three|four)\s+pair|Both\s+1|Neither\s+1|None\s+of|All\s+(?:of|three|four))', r'\n\1', text, flags=re.IGNORECASE)
+    text = re.sub(r'[ \t]+(Select the correct|Which of the|Choose the correct|How many of the)', r'\n\1', text, flags=re.IGNORECASE)
+    text = re.sub(r'(?m)^(\s*[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*)(.*)', r'\1 \2', text)
+
     raw_lines = [line.strip() for line in text.split('\n') if line.strip()]
     if not raw_lines: return None
 
@@ -105,26 +110,49 @@ def parse_upsc_question(text: str, has_photo: bool = False):
             exp_start_idx = i
             break
 
-    opt_prefix_regex = re.compile(r'^\s*(?:[\(\[]?[a-eA-E][\)\]\.\:\-]+|[\(\[]?[1-5][\)\]\:\-]+)\s*')
-    option_indices = [i for i, line in enumerate(raw_lines) if opt_prefix_regex.match(line)]
+    # --- 🧠 ADVANCED EXAM VOCABULARY REGEX 🧠 ---
+    opt_prefix_regex = re.compile(
+        r'^\s*(?:'
+        r'[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*|'            # Standard a., (a), [a]
+        r'Only\s+[1-4]|'                               # Only 1, Only 2
+        r'Only\s+(?:one|two|three|four)\s+pair|'       # Only one pair
+        r'Both\s+|'                                    # Both 1 and 2
+        r'Neither\s+|'                                 # Neither 1 nor 2
+        r'Either\s+|'                                  # Either 1 or 2
+        r'None\b|'                                     # None, None of the above
+        r'All\b|'                                      # All, All of the above
+        r'Statement\s+(?:I|II|1|2)\s+is|'              # Statement I is correct
+        r'(?:[1-4]\s*,\s*)*[1-4]\s+and\s+[1-4]|'       # 1, 2 and 3
+        r'[1-4]\s+(?:only|and)'                        # 1 only, 1 and 2
+        r')', re.IGNORECASE
+    )
     
+    option_indices = [i for i, line in enumerate(raw_lines) if opt_prefix_regex.match(line)]
     valid_opts = [i for i in option_indices if abs(i - correct_line_idx) <= 6]
     
-    if valid_opts:
+    # Smart Fallback (Just in case the words are super weird)
+    if not valid_opts:
+        statement_end_idx = 0
+        for i, line in enumerate(raw_lines):
+            if re.match(r'^\s*\d{1,2}[\.\)]', line):
+                statement_end_idx = i
+        first_opt_idx = statement_end_idx + 1 if statement_end_idx > 0 else max(0, correct_line_idx - 3)
+        last_opt_idx = exp_start_idx - 1 if exp_start_idx != -1 else len(raw_lines) - 1
+        
+        if last_opt_idx - first_opt_idx > 5:
+            first_opt_idx = max(0, correct_line_idx - 3)
+            last_opt_idx = min(len(raw_lines) - 1, correct_line_idx + 2)
+    else:
         first_opt_idx = min(valid_opts[0], correct_line_idx)
         last_opt_idx = max(valid_opts[-1], correct_line_idx)
         if exp_start_idx == -1 and last_opt_idx + 1 < len(raw_lines):
             exp_start_idx = last_opt_idx + 1
-    else:
-        first_opt_idx = max(0, correct_line_idx - 3)
-        if first_opt_idx == 0 and correct_line_idx > 0:
-            first_opt_idx = 1
-        if exp_start_idx != -1:
-            last_opt_idx = exp_start_idx - 1
-        else:
-            last_opt_idx = min(len(raw_lines) - 1, correct_line_idx + max(0, 3 - (correct_line_idx - first_opt_idx)))
-            if last_opt_idx + 1 < len(raw_lines):
-                exp_start_idx = last_opt_idx + 1
+
+    if exp_start_idx == -1:
+        for i in range(last_opt_idx + 1, len(raw_lines)):
+            if exp_pattern.match(raw_lines[i]):
+                exp_start_idx = i
+                break
 
     question_lines = raw_lines[:first_opt_idx]
     raw_options = raw_lines[first_opt_idx:(last_opt_idx + 1) if exp_start_idx == -1 else exp_start_idx]
@@ -171,7 +199,6 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if update.effective_chat.type != "private":
         return
 
-    # Extract text and photo ID
     if update.message.photo:
         raw_text = update.message.caption
         photo_id = update.message.photo[-1].file_id
@@ -190,18 +217,13 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         author_name += f" {update.effective_user.last_name}"
 
     parsed = None
-    
-    # 1. If it's a photo, try the new Shorthand Mode FIRST!
     if photo_id:
         parsed = parse_shorthand_caption(raw_text)
-
-    # 2. If it wasn't shorthand, try parsing it as a full text question
     if not parsed:
         parsed = parse_upsc_question(raw_text, has_photo=bool(photo_id))
 
-    # 3. If everything failed, reject it
     if not parsed:
-        await context.bot.send_message(chat_id=user_dm_id, text="❌ **Could not parse.**\nDid you forget the ✅? Or if using an image, just type the answer number (1, 2, 3, or 4) in the caption!")
+        await context.bot.send_message(chat_id=user_dm_id, text="❌ **Could not parse.**\nDid you forget the ✅? Make sure options are placed cleanly above the explanation.")
         return
 
     question_text = parsed["question"]
@@ -213,7 +235,6 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         safe_author = author_name.replace('<', '&lt;').replace('>', '&gt;')
         author_append = f"\n\n👤 <i>Quiz by: {safe_author}</i>"
         
-        # Post photo to the group
         sent_photo_msg = None
         if photo_id:
             sent_photo_msg = await context.bot.send_photo(
@@ -236,7 +257,6 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         short_exp = explanation[:200] if explanation else ""
 
-        # Post the actual poll
         await context.bot.send_poll(
             chat_id=TARGET_GROUP_ID,
             question=poll_question,
@@ -249,7 +269,7 @@ async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             reply_to_message_id=reply_target_id
         )
         
-        await context.bot.send_message(chat_id=user_dm_id, text="✅ **Success!** Your quiz was perfectly published to the main group.", parse_mode="Markdown")
+        await context.bot.send_message(chat_id=user_dm_id, text="✅ **Success!** Your unprefixed quiz was perfectly formatted and published.", parse_mode="Markdown")
 
     except Exception as e:
         await context.bot.send_message(chat_id=user_dm_id, text=f"❌ **Error posting to group.**\nError details: `{e}`", parse_mode="Markdown")
