@@ -32,8 +32,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "**Method 1: Text (With or Without a,b,c,d)**\n"
         "`1. Statement one.`\n"
         "`2. Statement two.`\n"
-        "`Only 1`\n"
-        "`Only 2✅`\n"
+        "`1`\n"
+        "`2✅`\n"
         "`Both 1 and 2`\n"
         "`None`\n"
         "`Explanation: Put your explanation here.`\n\n"
@@ -50,7 +50,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     status_text = (
         "🟢 **Bot Status:** Online & Active\n"
         f"🎯 **Publishing to Group:** `{TARGET_GROUP_ID}`\n"
-        "🧠 **Features:** Advanced UPSC Vocabulary Recognition Enabled\n"
+        "🧠 **Features:** \"1 2 Both None\" Sequence Detector Enabled\n"
         "⚡️ **Server:** Render Webhooks"
     )
     await update.message.reply_text(status_text, parse_mode="Markdown")
@@ -84,11 +84,17 @@ def parse_shorthand_caption(text: str):
 def parse_upsc_question(text: str, has_photo: bool = False):
     
     # --- 🛠️ STRICT PDF AUTO-CLEANER 🛠️ ---
-    # Un-flattens numbered statements ONLY (1., 2., etc.)
+    
+    # NEW: Sequence Un-flattener specifically for "1 2 Both None" formats pasted on one line
+    text = re.sub(
+        r'(?<![A-Za-z0-9])1(✅)?\s+2(✅)?\s+(Both(?: 1 and 2)?)(✅)?\s+(None|Neither(?: 1 nor 2)?)(✅)?(?=[\s\n]|$|\bExp)', 
+        r'\n1\1\n2\2\n\3\4\n\5\6', 
+        text, 
+        flags=re.IGNORECASE
+    )
+    
     text = re.sub(r'[ \t]+(\(?\d{1,2}[\)\.]\s+)', r'\n\1', text)
-    # Un-flattens lettered options if they exist (a., b., etc.)
     text = re.sub(r'[ \t]+(\(?(?:[a-eA-E])[\)\.]\s+)', r'\n\1', text)
-    # Un-flattens common Exam perspective keywords if they got merged into one line
     text = re.sub(r'[ \t]+(Only\s+[1-4]\b|Only\s+(?:one|two|three|four)\s+pair|Both\s+1|Neither\s+1|None\s+of|All\s+(?:of|three|four))', r'\n\1', text, flags=re.IGNORECASE)
     text = re.sub(r'[ \t]+(Select the correct|Which of the|Choose the correct|How many of the)', r'\n\1', text, flags=re.IGNORECASE)
     text = re.sub(r'(?m)^(\s*[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*)(.*)', r'\1 \2', text)
@@ -113,24 +119,24 @@ def parse_upsc_question(text: str, has_photo: bool = False):
     # --- 🧠 ADVANCED EXAM VOCABULARY REGEX 🧠 ---
     opt_prefix_regex = re.compile(
         r'^\s*(?:'
-        r'[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*|'            # Standard a., (a), [a]
-        r'Only\s+[1-4]|'                               # Only 1, Only 2
-        r'Only\s+(?:one|two|three|four)\s+pair|'       # Only one pair
-        r'Both\s+|'                                    # Both 1 and 2
-        r'Neither\s+|'                                 # Neither 1 nor 2
-        r'Either\s+|'                                  # Either 1 or 2
-        r'None\b|'                                     # None, None of the above
-        r'All\b|'                                      # All, All of the above
-        r'Statement\s+(?:I|II|1|2)\s+is|'              # Statement I is correct
-        r'(?:[1-4]\s*,\s*)*[1-4]\s+and\s+[1-4]|'       # 1, 2 and 3
-        r'[1-4]\s+(?:only|and)'                        # 1 only, 1 and 2
+        r'[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*|'            
+        r'^[1-4]\s*(?:✅)?$|'                             # Matches BARE numbers 1, 2, 3, 4 ONLY if they are the entire line
+        r'Only\s+[1-4]|'                               
+        r'Only\s+(?:one|two|three|four)\s+pair|'       
+        r'Both\b|'                                     
+        r'Neither\b|'                                  
+        r'Either\b|'                                   
+        r'None\b|'                                     
+        r'All\b|'                                      
+        r'Statement\s+(?:I|II|1|2)\s+is|'              
+        r'(?:[1-4]\s*,\s*)*[1-4]\s+and\s+[1-4]|'       
+        r'[1-4]\s+(?:only|and)'                       
         r')', re.IGNORECASE
     )
     
     option_indices = [i for i, line in enumerate(raw_lines) if opt_prefix_regex.match(line)]
     valid_opts = [i for i in option_indices if abs(i - correct_line_idx) <= 6]
     
-    # Smart Fallback (Just in case the words are super weird)
     if not valid_opts:
         statement_end_idx = 0
         for i, line in enumerate(raw_lines):
@@ -155,6 +161,14 @@ def parse_upsc_question(text: str, has_photo: bool = False):
                 break
 
     question_lines = raw_lines[:first_opt_idx]
+    
+    # Safely strips left-over garbage characters from the end of the question
+    if question_lines:
+        last_line = question_lines[-1]
+        cleaned_last_line = re.sub(r'(?:(?<=[.!?])(?:\s+[1-4a-dA-D]){1,4}|(?:\s+[1-4a-dA-D]){2,4})\s*$', '', last_line)
+        if cleaned_last_line:
+            question_lines[-1] = cleaned_last_line.strip()
+            
     raw_options = raw_lines[first_opt_idx:(last_opt_idx + 1) if exp_start_idx == -1 else exp_start_idx]
 
     explanation = ""
