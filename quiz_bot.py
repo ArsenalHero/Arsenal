@@ -18,7 +18,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "👋 **Welcome to the ARSENAL QUIZMASTER BOT 🧿!**\n\n"
         "I can publish text quizzes AND image quizzes directly to the main group!\n\n"
         "**How to use me:**\n"
-        "1. Send text with a ✅ next to the answer.\n"
+        "1. Send text with a ✅ next to the answer (even without a, b, c, d prefixes!).\n"
         "2. Upload an image, and put the answer (`1`, `2`, `3`, or `4`) in the caption.\n\n"
         "👉 Tap /help to see the exact format."
     )
@@ -36,7 +36,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "`2✅`\n"
         "`Both 1 and 2`\n"
         "`None`\n"
-        "`Explanation: Put your explanation here.`\n\n"
+        "`Exp: Put your explanation here.`\n\n"
         "**Method 2: Image Shortcut**\n"
         "Upload a photo and set the caption to just the answer and explanation:\n"
         "`2`\n"
@@ -50,7 +50,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     status_text = (
         "🟢 **Bot Status:** Online & Active\n"
         f"🎯 **Publishing to Group:** `{TARGET_GROUP_ID}`\n"
-        "🧠 **Features:** \"1 2 Both None\" Sequence Detector Enabled\n"
+        "🧠 **Features:** \"Exp:\" Un-flattener & Strict Cleaner Enabled\n"
         "⚡️ **Server:** Render Webhooks"
     )
     await update.message.reply_text(status_text, parse_mode="Markdown")
@@ -85,7 +85,10 @@ def parse_upsc_question(text: str, has_photo: bool = False):
     
     # --- 🛠️ STRICT PDF AUTO-CLEANER 🛠️ ---
     
-    # NEW: Sequence Un-flattener specifically for "1 2 Both None" formats pasted on one line
+    # 1. Un-flattens "Exp:" or "Explanation:" if it gets stuck to the end of an option
+    text = re.sub(r'(?<!\n)\s*\b(Explanation|Exp|Ans|Answer|Solution|Notes?)[\:\-]', r'\n\1:', text, flags=re.IGNORECASE)
+    
+    # 2. Sequence Un-flattener specifically for "1 2 Both None" formats pasted on one line
     text = re.sub(
         r'(?<![A-Za-z0-9])1(✅)?\s+2(✅)?\s+(Both(?: 1 and 2)?)(✅)?\s+(None|Neither(?: 1 nor 2)?)(✅)?(?=[\s\n]|$|\bExp)', 
         r'\n1\1\n2\2\n\3\4\n\5\6', 
@@ -120,7 +123,7 @@ def parse_upsc_question(text: str, has_photo: bool = False):
     opt_prefix_regex = re.compile(
         r'^\s*(?:'
         r'[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*|'            
-        r'^[1-4]\s*(?:✅)?$|'                             # Matches BARE numbers 1, 2, 3, 4 ONLY if they are the entire line
+        r'^[1-4]\s*(?:✅)?$|'                             
         r'Only\s+[1-4]|'                               
         r'Only\s+(?:one|two|three|four)\s+pair|'       
         r'Both\b|'                                     
@@ -162,7 +165,6 @@ def parse_upsc_question(text: str, has_photo: bool = False):
 
     question_lines = raw_lines[:first_opt_idx]
     
-    # Safely strips left-over garbage characters from the end of the question
     if question_lines:
         last_line = question_lines[-1]
         cleaned_last_line = re.sub(r'(?:(?<=[.!?])(?:\s+[1-4a-dA-D]){1,4}|(?:\s+[1-4a-dA-D]){2,4})\s*$', '', last_line)
