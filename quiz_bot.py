@@ -50,7 +50,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     status_text = (
         "🟢 **Bot Status:** Online & Active\n"
         f"🎯 **Publishing to Group:** `{TARGET_GROUP_ID}`\n"
-        "🧠 **Features:** \"Exp:\" Un-flattener & Strict Cleaner Enabled\n"
+        "🧠 **Features:** \"Only One/Two\" Fix & Strict Cleaner Enabled\n"
         "⚡️ **Server:** Render Webhooks"
     )
     await update.message.reply_text(status_text, parse_mode="Markdown")
@@ -96,10 +96,26 @@ def parse_upsc_question(text: str, has_photo: bool = False):
         flags=re.IGNORECASE
     )
     
+    # 3. NEW: Sequence Un-flattener for "Only one Only two Only three All four" formats pasted on one line
+    text = re.sub(
+        r'(?<![A-Za-z0-9])(Only\s+one)(✅)?\s+(Only\s+two)(✅)?\s+(Only\s+three)(✅)?\s+(All\s+four|None)(✅)?(?=[\s\n]|$|\bExp)', 
+        r'\n\1\2\n\3\4\n\5\6\n\7\8', 
+        text, 
+        flags=re.IGNORECASE
+    )
+    
+    # 4. Standard statement split (1. 2.) and standard option split (a. b.)
     text = re.sub(r'[ \t]+(\(?\d{1,2}[\)\.]\s+)', r'\n\1', text)
     text = re.sub(r'[ \t]+(\(?(?:[a-eA-E])[\)\.]\s+)', r'\n\1', text)
-    text = re.sub(r'[ \t]+(Only\s+[1-4]\b|Only\s+(?:one|two|three|four)\s+pair|Both\s+1|Neither\s+1|None\s+of|All\s+(?:of|three|four))', r'\n\1', text, flags=re.IGNORECASE)
+    
+    # 5. NEW: Break valid options stuck right after a sentence or question mark (e.g., "...framework? Only one")
+    text = re.sub(r'(?<=[.!?])[ \t]+(Only\s+[1-4]\b|Only\s+(?:one|two|three|four)\b|Both\b|Neither\b|None\b|All\b)', r'\n\1', text, flags=re.IGNORECASE)
+    
+    # 6. General un-flattener for keyword options
+    text = re.sub(r'[ \t]+(Only\s+[1-4]\b|Only\s+(?:one|two|three|four)\b(?:\s+pairs?)?|Both\s+(?:1|I)\b|Neither\s+(?:1|I)\b|None\s+of|All\s+(?:of|three|four)\b)', r'\n\1', text, flags=re.IGNORECASE)
     text = re.sub(r'[ \t]+(Select the correct|Which of the|Choose the correct|How many of the)', r'\n\1', text, flags=re.IGNORECASE)
+    
+    # 7. Options stuck to start of line fix
     text = re.sub(r'(?m)^(\s*[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*)(.*)', r'\1 \2', text)
 
     raw_lines = [line.strip() for line in text.split('\n') if line.strip()]
@@ -125,7 +141,7 @@ def parse_upsc_question(text: str, has_photo: bool = False):
         r'[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*|'            
         r'^[1-4]\s*(?:✅)?$|'                             
         r'Only\s+[1-4]|'                               
-        r'Only\s+(?:one|two|three|four)\s+pair|'       
+        r'Only\s+(?:one|two|three|four)\b(?:\s+pairs?)?|' # Now captures "Only one" perfectly without requiring "pair"     
         r'Both\b|'                                     
         r'Neither\b|'                                  
         r'Either\b|'                                   
@@ -165,6 +181,7 @@ def parse_upsc_question(text: str, has_photo: bool = False):
 
     question_lines = raw_lines[:first_opt_idx]
     
+    # Safely strips left-over garbage characters from the end of the question
     if question_lines:
         last_line = question_lines[-1]
         cleaned_last_line = re.sub(r'(?:(?<=[.!?])(?:\s+[1-4a-dA-D]){1,4}|(?:\s+[1-4a-dA-D]){2,4})\s*$', '', last_line)
