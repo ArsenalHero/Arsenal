@@ -49,7 +49,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     status_text = (
         "🟢 **Bot Status:** Online & Active\n"
         f"🎯 **Publishing to Group:** `{TARGET_GROUP_ID}`\n"
-        "🧠 **Features:** \"Only\" Binding & Strict Cleaner Enabled\n"
+        "🧠 **Features:** Master Options Rule & Strict Cleaner Enabled\n"
         "⚡️ **Server:** Render Webhooks"
     )
     await update.message.reply_text(status_text, parse_mode="Markdown")
@@ -87,18 +87,18 @@ def parse_upsc_question(text: str, has_photo: bool = False):
     # 1. Un-flattens "Exp:" or "Explanation:"
     text = re.sub(r'(?<!\n)\s*\b(Explanation|Exp|Ans|Answer|Solution|Notes?)[\:\-]', r'\n\1:', text, flags=re.IGNORECASE)
     
-    # 2. Sequence Un-flattener for "1 2 Both None" formats
+    # 2. Sequence Un-flattener for "1 2 Both None" formats (Supports Roman Numerals)
     text = re.sub(
-        r'(?<![A-Za-z0-9])1(✅)?\s+2(✅)?\s+(Both(?: 1 and 2)?)(✅)?\s+(None|Neither(?: 1 nor 2)?)(✅)?(?=[\s\n]|$|\bExp)', 
-        r'\n1\1\n2\2\n\3\4\n\5\6', 
+        r'(?<![A-Za-z0-9])(1|I)(✅)?\s+(2|II)(✅)?\s+(Both(?: 1 and 2| I and II)?)(✅)?\s+(None|Neither(?: 1 nor 2| I nor II)?)(✅)?(?=[\s\n]|$|\bExp)', 
+        r'\n\1\2\n\3\4\n\5\6\n\7\8', 
         text, 
         flags=re.IGNORECASE
     )
     
-    # 3. Sequence Un-flattener for "1 2 3 All/None" formats
+    # 3. Sequence Un-flattener for "1 2 3 All/None" formats (Supports Roman Numerals)
     text = re.sub(
-        r'(?<![A-Za-z0-9])1(✅)?\s+2(✅)?\s+3(✅)?\s+(4|All(?: four)?|None)(✅)?(?=[\s\n]|$|\bExp)', 
-        r'\n1\1\n2\2\n3\3\n\4\5', 
+        r'(?<![A-Za-z0-9])(1|I)(✅)?\s+(2|II)(✅)?\s+(3|III)(✅)?\s+(4|IV|All(?: four| of the above)?|None)(✅)?(?=[\s\n]|$|\bExp)', 
+        r'\n\1\2\n\3\4\n\5\6\n\7\8', 
         text, 
         flags=re.IGNORECASE
     )
@@ -115,14 +115,24 @@ def parse_upsc_question(text: str, has_photo: bool = False):
     text = re.sub(r'[ \t]+(\(?\d{1,2}[\)\.]\s+)', r'\n\1', text)
     text = re.sub(r'[ \t]+(\(?(?:[a-eA-E])[\)\.]\s+)', r'\n\1', text)
     
-    # 6. Break options stuck right after a sentence or question mark (Includes 'only' binding)
-    text = re.sub(r'(?<=[.!?])[ \t]+(Only\s+[1-4]\b|Only\s+(?:one|two|three|four)\b|Both\b|Neither\b|None\b|All\b|(?:[1-4]\s*[,&]\s*)*[1-4]\s+(?:and|&)\s+[1-4](?:\s+only)?\b|(?:[1-4]\s*,\s*)+[1-4](?:\s+only)?\b|[1-4]\s+only\b)', r'\n\1', text, flags=re.IGNORECASE)
-    
-    # 7. General un-flattener for keyword options (Includes 'only' binding)
-    text = re.sub(r'[ \t]+(Only\s+[1-4]\b|Only\s+(?:one|two|three|four)\b(?:\s+pairs?)?|Both\b|Neither\b|None\b|All\b|(?:[1-4]\s*[,&]\s*)*[1-4]\s+(?:and|&)\s+[1-4](?:\s+only)?\b|(?:[1-4]\s*,\s*)+[1-4](?:\s+only)?\b|[1-4]\s+only\b)', r'\n\1', text, flags=re.IGNORECASE)
+    # 6. UNIVERSAL Master Option Un-flattener (Catches EVERYTHING glued to sentences)
+    master_option_pattern = (
+        r'('
+        r'Only\s+(?:[1-4]|I|II|III|IV)\b|'
+        r'Only\s+(?:one|two|three|four)\b(?:\s+pairs?)?|'
+        r'Both(?:\s+(?:[1-4]|I|II|III|IV)\s+(?:and|&)\s+(?:[1-4]|I|II|III|IV))?\b|'
+        r'Neither(?:\s+(?:[1-4]|I|II|III|IV)\s+nor\s+(?:[1-4]|I|II|III|IV))?\b|'
+        r'None(?:\s+of\s+the\s+above|\s+of\s+these)?\b|'
+        r'All(?:\s+(?:four|of\s+the\s+above|\s+of\s+these))?\b|'
+        r'(?:(?:[1-4]|I|II|III|IV|i|ii|iii|iv)\s*[,&]\s*)*(?:[1-4]|I|II|III|IV|i|ii|iii|iv)\s+(?:and|&)\s+(?:[1-4]|I|II|III|IV|i|ii|iii|iv)(?:\s+only)?\b|'
+        r'(?:(?:[1-4]|I|II|III|IV|i|ii|iii|iv)\s*,\s*)+(?:[1-4]|I|II|III|IV|i|ii|iii|iv)(?:\s+only)?\b|'
+        r'(?:[1-4]|I|II|III|IV|i|ii|iii|iv)\s+only\b'
+        r')'
+    )
+    text = re.sub(rf'(?<=[.!?\s])[ \t]+{master_option_pattern}', r'\n\1', text, flags=re.IGNORECASE)
     text = re.sub(r'[ \t]+(Select the correct|Which of the|Choose the correct|How many of the)', r'\n\1', text, flags=re.IGNORECASE)
     
-    # 8. Options stuck to start of line fix
+    # 7. Options stuck to start of line fix
     text = re.sub(r'(?m)^(\s*[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*)(.*)', r'\1 \2', text)
 
     raw_lines = [line.strip() for line in text.split('\n') if line.strip()]
@@ -147,17 +157,8 @@ def parse_upsc_question(text: str, has_photo: bool = False):
         r'^\s*(?:'
         r'[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*|'            
         r'^[1-4]\s*(?:✅)?$|'                             
-        r'Only\s+[1-4]|'                               
-        r'Only\s+(?:one|two|three|four)\b(?:\s+pairs?)?|'    
-        r'Both\b|'                                     
-        r'Neither\b|'                                  
-        r'Either\b|'                                   
-        r'None\b|'                                     
-        r'All\b|'                                      
-        r'Statement\s+(?:I|II|1|2)\s+is|'              
-        r'(?:[1-4]\s*[,&]\s*)*[1-4]\s+(?:and|&)\s+[1-4](?:\s+only)?|' # Captures "1, 2 and 3 only" 
-        r'(?:[1-4]\s*,\s*)+[1-4](?:\s+only)?|'                       # Captures "1, 2, 3 only" 
-        r'[1-4]\s+(?:only|and)'                       
+        r'Statement\s+(?:I|II|III|IV|1|2|3|4)\s+is|'              
+        rf'{master_option_pattern}'                       
         r')', re.IGNORECASE
     )
     
@@ -192,7 +193,7 @@ def parse_upsc_question(text: str, has_photo: bool = False):
     # Safely strips left-over garbage characters from the end of the question
     if question_lines:
         last_line = question_lines[-1]
-        cleaned_last_line = re.sub(r'(?:(?<=[.!?])(?:\s+[1-4a-dA-D]){1,4}|(?:\s+[1-4a-dA-D]){2,4})\s*$', '', last_line)
+        cleaned_last_line = re.sub(r'(?:(?<=[.!?])(?:\s+(?:[1-4a-dA-D]|I|II|III|IV)){1,4}|(?:\s+(?:[1-4a-dA-D]|I|II|III|IV)){2,4})\s*$', '', last_line, flags=re.IGNORECASE)
         if cleaned_last_line:
             question_lines[-1] = cleaned_last_line.strip()
             
