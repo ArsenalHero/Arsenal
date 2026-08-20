@@ -18,7 +18,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "👋 **Welcome to the ARSENAL QUIZMASTER BOT 🧿!**\n\n"
         "I can publish text quizzes AND image quizzes directly to the main group!\n\n"
         "**How to use me:**\n"
-        "1. Send text with a ✅ next to the answer (even without a, b, c, d prefixes!).\n"
+        "1. Send text with a ✅ next to the answer.\n"
         "2. Upload an image, and put the answer (`1`, `2`, `3`, or `4`) in the caption.\n\n"
         "👉 Tap /help to see the exact format."
     )
@@ -32,9 +32,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "**Method 1: Text (With or Without a,b,c,d)**\n"
         "`1. Statement one.`\n"
         "`2. Statement two.`\n"
-        "`1`\n"
-        "`2✅`\n"
-        "`Both 1 and 2`\n"
+        "`1 and 2 only`\n"
+        "`1, 2 and 3 only✅`\n"
         "`None`\n"
         "`Exp: Put your explanation here.`\n\n"
         "**Method 2: Image Shortcut**\n"
@@ -50,7 +49,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     status_text = (
         "🟢 **Bot Status:** Online & Active\n"
         f"🎯 **Publishing to Group:** `{TARGET_GROUP_ID}`\n"
-        "🧠 **Features:** \"Only One/Two\" Fix & Strict Cleaner Enabled\n"
+        "🧠 **Features:** \"Only\" Binding & Strict Cleaner Enabled\n"
         "⚡️ **Server:** Render Webhooks"
     )
     await update.message.reply_text(status_text, parse_mode="Markdown")
@@ -85,10 +84,10 @@ def parse_upsc_question(text: str, has_photo: bool = False):
     
     # --- 🛠️ STRICT PDF AUTO-CLEANER 🛠️ ---
     
-    # 1. Un-flattens "Exp:" or "Explanation:" if it gets stuck to the end of an option
+    # 1. Un-flattens "Exp:" or "Explanation:"
     text = re.sub(r'(?<!\n)\s*\b(Explanation|Exp|Ans|Answer|Solution|Notes?)[\:\-]', r'\n\1:', text, flags=re.IGNORECASE)
     
-    # 2. Sequence Un-flattener specifically for "1 2 Both None" formats pasted on one line
+    # 2. Sequence Un-flattener for "1 2 Both None" formats
     text = re.sub(
         r'(?<![A-Za-z0-9])1(✅)?\s+2(✅)?\s+(Both(?: 1 and 2)?)(✅)?\s+(None|Neither(?: 1 nor 2)?)(✅)?(?=[\s\n]|$|\bExp)', 
         r'\n1\1\n2\2\n\3\4\n\5\6', 
@@ -96,7 +95,15 @@ def parse_upsc_question(text: str, has_photo: bool = False):
         flags=re.IGNORECASE
     )
     
-    # 3. NEW: Sequence Un-flattener for "Only one Only two Only three All four" formats pasted on one line
+    # 3. Sequence Un-flattener for "1 2 3 All/None" formats
+    text = re.sub(
+        r'(?<![A-Za-z0-9])1(✅)?\s+2(✅)?\s+3(✅)?\s+(4|All(?: four)?|None)(✅)?(?=[\s\n]|$|\bExp)', 
+        r'\n1\1\n2\2\n3\3\n\4\5', 
+        text, 
+        flags=re.IGNORECASE
+    )
+    
+    # 4. Sequence Un-flattener for "Only one Only two Only three All four" formats
     text = re.sub(
         r'(?<![A-Za-z0-9])(Only\s+one)(✅)?\s+(Only\s+two)(✅)?\s+(Only\s+three)(✅)?\s+(All\s+four|None)(✅)?(?=[\s\n]|$|\bExp)', 
         r'\n\1\2\n\3\4\n\5\6\n\7\8', 
@@ -104,18 +111,18 @@ def parse_upsc_question(text: str, has_photo: bool = False):
         flags=re.IGNORECASE
     )
     
-    # 4. Standard statement split (1. 2.) and standard option split (a. b.)
+    # 5. Standard statement and lettered option splits
     text = re.sub(r'[ \t]+(\(?\d{1,2}[\)\.]\s+)', r'\n\1', text)
     text = re.sub(r'[ \t]+(\(?(?:[a-eA-E])[\)\.]\s+)', r'\n\1', text)
     
-    # 5. NEW: Break valid options stuck right after a sentence or question mark (e.g., "...framework? Only one")
-    text = re.sub(r'(?<=[.!?])[ \t]+(Only\s+[1-4]\b|Only\s+(?:one|two|three|four)\b|Both\b|Neither\b|None\b|All\b)', r'\n\1', text, flags=re.IGNORECASE)
+    # 6. Break options stuck right after a sentence or question mark (Includes 'only' binding)
+    text = re.sub(r'(?<=[.!?])[ \t]+(Only\s+[1-4]\b|Only\s+(?:one|two|three|four)\b|Both\b|Neither\b|None\b|All\b|(?:[1-4]\s*[,&]\s*)*[1-4]\s+(?:and|&)\s+[1-4](?:\s+only)?\b|(?:[1-4]\s*,\s*)+[1-4](?:\s+only)?\b|[1-4]\s+only\b)', r'\n\1', text, flags=re.IGNORECASE)
     
-    # 6. General un-flattener for keyword options
-    text = re.sub(r'[ \t]+(Only\s+[1-4]\b|Only\s+(?:one|two|three|four)\b(?:\s+pairs?)?|Both\s+(?:1|I)\b|Neither\s+(?:1|I)\b|None\s+of|All\s+(?:of|three|four)\b)', r'\n\1', text, flags=re.IGNORECASE)
+    # 7. General un-flattener for keyword options (Includes 'only' binding)
+    text = re.sub(r'[ \t]+(Only\s+[1-4]\b|Only\s+(?:one|two|three|four)\b(?:\s+pairs?)?|Both\b|Neither\b|None\b|All\b|(?:[1-4]\s*[,&]\s*)*[1-4]\s+(?:and|&)\s+[1-4](?:\s+only)?\b|(?:[1-4]\s*,\s*)+[1-4](?:\s+only)?\b|[1-4]\s+only\b)', r'\n\1', text, flags=re.IGNORECASE)
     text = re.sub(r'[ \t]+(Select the correct|Which of the|Choose the correct|How many of the)', r'\n\1', text, flags=re.IGNORECASE)
     
-    # 7. Options stuck to start of line fix
+    # 8. Options stuck to start of line fix
     text = re.sub(r'(?m)^(\s*[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*)(.*)', r'\1 \2', text)
 
     raw_lines = [line.strip() for line in text.split('\n') if line.strip()]
@@ -141,14 +148,15 @@ def parse_upsc_question(text: str, has_photo: bool = False):
         r'[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*|'            
         r'^[1-4]\s*(?:✅)?$|'                             
         r'Only\s+[1-4]|'                               
-        r'Only\s+(?:one|two|three|four)\b(?:\s+pairs?)?|' # Now captures "Only one" perfectly without requiring "pair"     
+        r'Only\s+(?:one|two|three|four)\b(?:\s+pairs?)?|'    
         r'Both\b|'                                     
         r'Neither\b|'                                  
         r'Either\b|'                                   
         r'None\b|'                                     
         r'All\b|'                                      
         r'Statement\s+(?:I|II|1|2)\s+is|'              
-        r'(?:[1-4]\s*,\s*)*[1-4]\s+and\s+[1-4]|'       
+        r'(?:[1-4]\s*[,&]\s*)*[1-4]\s+(?:and|&)\s+[1-4](?:\s+only)?|' # Captures "1, 2 and 3 only" 
+        r'(?:[1-4]\s*,\s*)+[1-4](?:\s+only)?|'                       # Captures "1, 2, 3 only" 
         r'[1-4]\s+(?:only|and)'                       
         r')', re.IGNORECASE
     )
