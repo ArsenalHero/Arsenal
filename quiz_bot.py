@@ -14,9 +14,9 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://arsenalxx.onrender.com")
 TARGET_GROUP_ID = int(os.getenv("TARGET_GROUP_ID", "-1004211404152"))
 
 # --- EXAM COUNTDOWN CONFIG ---
-# Set these in your Render Environment Variables! Format: YYYY-MM-DD
-EXAM_DATE_STR = os.getenv("EXAM_DATE", "2027-05-23") 
-EXAM_NAME = os.getenv("EXAM_NAME", "UPSC CSP 2027")
+# Set these in your Render Environment Variables!
+EXAM_DATE_STR = os.getenv("EXAM_DATE", "2027-05-23") # May 23, 2027
+EXAM_NAME = os.getenv("EXAM_NAME", "UPSC CSP 2027") # UPSC CSP 2027
 
 # --- COMMAND HANDLERS ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -83,23 +83,22 @@ async def send_countdown(context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception as e:
         print(f"Failed to send countdown message: {e}")
 
-# --- PARSER FUNCTIONS (Truncated for brevity, keep your existing logic here) ---
+# --- PARSER FUNCTIONS (Paste your existing logic inside here) ---
 def parse_shorthand_caption(text: str):
-    # KEEP YOUR EXISTING LOGIC HERE
+    # PASTE YOUR EXISTING IMAGE PARSER LOGIC HERE
     pass
 
 def parse_upsc_question(text: str, has_photo: bool = False):
-    # KEEP YOUR EXISTING LOGIC HERE
+    # PASTE YOUR EXISTING TEXT PARSER LOGIC HERE
     pass
 
 async def send_long_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str, parse_mode: str = "HTML", reply_to=None):
-    # KEEP YOUR EXISTING LOGIC HERE
+    # PASTE YOUR EXISTING LONG MESSAGE SENDER LOGIC HERE
     pass
 
 async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # KEEP YOUR EXISTING LOGIC HERE
+    # PASTE YOUR EXISTING CREATE QUIZ LOGIC HERE
     pass
-
 
 # --- FASTAPI WEBHOOK SERVER & SCHEDULER ---
 ptb = Application.builder().updater(None).token(BOT_TOKEN).build()
@@ -110,9 +109,9 @@ ptb.add_handler(CommandHandler("help", help_command, filters=filters.ChatType.PR
 ptb.add_handler(CommandHandler("status", status_command, filters=filters.ChatType.PRIVATE))
 ptb.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND & filters.ChatType.PRIVATE, create_upsc_quiz))
 
-# 2. Schedule the Morning Countdown Message (7:00 AM IST)
+# 2. Schedule the Morning Countdown Message (6:06 AM IST)
 ist_tz = pytz.timezone('Asia/Kolkata')
-morning_time = time(hour=7, minute=0, tzinfo=ist_tz)
+morning_time = time(hour=6, minute=6, tzinfo=ist_tz)  # Set to 6:06 AM IST
 ptb.job_queue.run_daily(send_countdown, time=morning_time)
 
 # 3. Lifespan config
