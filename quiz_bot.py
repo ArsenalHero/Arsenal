@@ -17,6 +17,9 @@ TARGET_GROUP_ID = int(os.getenv("TARGET_GROUP_ID", "-1004211404152"))
 EXAM_DATE_STR = os.getenv("EXAM_DATE", "2027-05-23") # May 23, 2027
 EXAM_NAME = os.getenv("EXAM_NAME", "UPSC CSP 2027") # UPSC CSP 2027
 
+# Memory tracker to prevent double messages
+LAST_SENT_DATE = None
+
 # --- COMMAND HANDLERS ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_chat.type != "private": return
@@ -59,13 +62,18 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
     await update.message.reply_text(status_text, parse_mode="Markdown")
 
-# --- DAILY COUNTDOWN JOB ---
+# --- DAILY COUNTDOWN JOB (With Double-Message Protection) ---
 async def send_countdown(context: ContextTypes.DEFAULT_TYPE) -> None:
+    global LAST_SENT_DATE
     try:
         ist_tz = pytz.timezone('Asia/Kolkata')
         today = datetime.now(ist_tz).date()
-        exam_date = datetime.strptime(EXAM_DATE_STR, "%Y-%m-%d").date()
         
+        # GUARDRAIL: If it already sent a message today, cancel out completely!
+        if LAST_SENT_DATE == today:
+            return
+
+        exam_date = datetime.strptime(EXAM_DATE_STR, "%Y-%m-%d").date()
         days_left = (exam_date - today).days
 
         if days_left > 0:
@@ -75,9 +83,13 @@ async def send_countdown(context: ContextTypes.DEFAULT_TYPE) -> None:
                 "Keep grinding! Every single question counts. 🎯📖"
             )
             await context.bot.send_message(chat_id=TARGET_GROUP_ID, text=msg, parse_mode="Markdown")
+            LAST_SENT_DATE = today # Mark today as sent
+            
         elif days_left == 0:
             msg = f"🚨 **It's Exam Day!** Best of luck to everyone writing the {EXAM_NAME} today! Stay calm and crush it! 🎯"
             await context.bot.send_message(chat_id=TARGET_GROUP_ID, text=msg, parse_mode="Markdown")
+            LAST_SENT_DATE = today # Mark today as sent
+            
     except Exception as e:
         print(f"Failed to send countdown message: {e}")
 
@@ -102,9 +114,9 @@ ptb.add_handler(CommandHandler("help", help_command, filters=filters.ChatType.PR
 ptb.add_handler(CommandHandler("status", status_command, filters=filters.ChatType.PRIVATE))
 ptb.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND & filters.ChatType.PRIVATE, create_upsc_quiz))
 
-# ⏰ Scheduled for 6:36 AM IST
+# ⏰ Scheduled for 6:41 AM IST
 ist_tz = pytz.timezone('Asia/Kolkata')
-morning_time = time(hour=6, minute=36, tzinfo=ist_tz)  # Updated to 6:36 AM
+morning_time = time(hour=6, minute=41, tzinfo=ist_tz)  # Updated to 6:41 AM
 ptb.job_queue.run_daily(send_countdown, time=morning_time)
 
 @asynccontextmanager
