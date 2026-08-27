@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request, Response
 from telegram import Update, Poll
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# --- CONFIGURATION (Hardcoded Fallbacks added) ---
+# --- CONFIGURATION ---
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8929947153:AAF8JIXltVTY3AZA8WZJfmr2CZDSlzTareE")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://arsenalxx.onrender.com")
 TARGET_GROUP_ID = int(os.getenv("TARGET_GROUP_ID", "-1004211404152"))
@@ -102,9 +102,9 @@ ptb.add_handler(CommandHandler("help", help_command, filters=filters.ChatType.PR
 ptb.add_handler(CommandHandler("status", status_command, filters=filters.ChatType.PRIVATE))
 ptb.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND & filters.ChatType.PRIVATE, create_upsc_quiz))
 
-# ⏰ Scheduled for 6:30 AM IST
+# ⏰ Scheduled for 6:36 AM IST
 ist_tz = pytz.timezone('Asia/Kolkata')
-morning_time = time(hour=6, minute=30, tzinfo=ist_tz)  # Updated to 6:30 AM
+morning_time = time(hour=6, minute=36, tzinfo=ist_tz)  # Updated to 6:36 AM
 ptb.job_queue.run_daily(send_countdown, time=morning_time)
 
 @asynccontextmanager
