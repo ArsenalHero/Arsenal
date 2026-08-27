@@ -114,9 +114,9 @@ ptb.add_handler(CommandHandler("help", help_command, filters=filters.ChatType.PR
 ptb.add_handler(CommandHandler("status", status_command, filters=filters.ChatType.PRIVATE))
 ptb.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND & filters.ChatType.PRIVATE, create_upsc_quiz))
 
-# ⏰ Scheduled for 6:41 AM IST
+# ⏰ Scheduled for 6:50 AM IST
 ist_tz = pytz.timezone('Asia/Kolkata')
-morning_time = time(hour=6, minute=41, tzinfo=ist_tz)  # Updated to 6:41 AM
+morning_time = time(hour=6, minute=50, tzinfo=ist_tz)  # Updated to 6:50 AM
 ptb.job_queue.run_daily(send_countdown, time=morning_time)
 
 @asynccontextmanager
