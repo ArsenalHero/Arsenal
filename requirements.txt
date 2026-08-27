@@ -1,3 +1,5 @@
-python-telegram-bot
+python-telegram-bot[job-queue]>=20.0
 fastapi
 uvicorn
+apscheduler
+pytz
