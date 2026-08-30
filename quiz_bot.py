@@ -62,14 +62,13 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
     await update.message.reply_text(status_text, parse_mode="Markdown")
 
-# --- DAILY COUNTDOWN JOB (With Double-Message Protection) ---
+# --- DAILY COUNTDOWN JOB ---
 async def send_countdown(context: ContextTypes.DEFAULT_TYPE) -> None:
     global LAST_SENT_DATE
     try:
         ist_tz = pytz.timezone('Asia/Kolkata')
         today = datetime.now(ist_tz).date()
         
-        # GUARDRAIL: If it already sent a message today, cancel out completely!
         if LAST_SENT_DATE == today:
             return
 
@@ -83,28 +82,266 @@ async def send_countdown(context: ContextTypes.DEFAULT_TYPE) -> None:
                 "Keep grinding! Every single question counts. 🎯📖"
             )
             await context.bot.send_message(chat_id=TARGET_GROUP_ID, text=msg, parse_mode="Markdown")
-            LAST_SENT_DATE = today # Mark today as sent
+            LAST_SENT_DATE = today
             
         elif days_left == 0:
             msg = f"🚨 **It's Exam Day!** Best of luck to everyone writing the {EXAM_NAME} today! Stay calm and crush it! 🎯"
             await context.bot.send_message(chat_id=TARGET_GROUP_ID, text=msg, parse_mode="Markdown")
-            LAST_SENT_DATE = today # Mark today as sent
+            LAST_SENT_DATE = today
             
     except Exception as e:
         print(f"Failed to send countdown message: {e}")
 
-# --- PARSER FUNCTIONS (Keep your parser logic here) ---
+# --- IMAGE SHORTHAND PARSER ---
 def parse_shorthand_caption(text: str):
-    pass
+    match = re.match(r'^\s*(?:ans(?:wer)?\s*[:\-\.]?\s*)?([1-4a-dA-D])\s*(?:$|\n(.*))', text, re.IGNORECASE | re.DOTALL)
+    
+    if match:
+        ans = match.group(1).lower()
+        remainder = match.group(2) or ""
+        
+        if ans in ['1', 'a']: correct_id = 0
+        elif ans in ['2', 'b']: correct_id = 1
+        elif ans in ['3', 'c']: correct_id = 2
+        elif ans in ['4', 'd']: correct_id = 3
+        else: return None
+        
+        explanation = remainder.strip()
+        explanation = re.sub(r'^(?:exp(?:lanation)?|notes?)\s*[:\-\.]?\s*', '', explanation, flags=re.IGNORECASE).strip()
+        
+        return {
+            "question": "👇 Please refer to the image above to answer the question.",
+            "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
+            "correct_option_id": correct_id,
+            "explanation": explanation
+        }
+    return None
 
+# --- UPSC FULL TEXT PARSER LOGIC ---
 def parse_upsc_question(text: str, has_photo: bool = False):
-    pass
+    
+    text = re.sub(r'(?<!\n)\s*\b(Explanation|Exp|Ans|Answer|Solution|Notes?)[\:\-]', r'\n\1:', text, flags=re.IGNORECASE)
+    
+    text = re.sub(
+        r'(?<![A-Za-z0-9])(1|I)(✅)?\s+(2|II)(✅)?\s+(Both(?: 1 and 2| I and II)?)(✅)?\s+(None|Neither(?: 1 nor 2| I nor II)?)(✅)?(?=[\s\n]|$|\bExp)', 
+        r'\n\1\2\n\3\4\n\5\6\n\7\8', 
+        text, 
+        flags=re.IGNORECASE
+    )
+    
+    text = re.sub(
+        r'(?<![A-Za-z0-9])(1|I)(✅)?\s+(2|II)(✅)?\s+(3|III)(✅)?\s+(4|IV|All(?: four| of the above)?|None)(✅)?(?=[\s\n]|$|\bExp)', 
+        r'\n\1\2\n\3\4\n\5\6\n\7\8', 
+        text, 
+        flags=re.IGNORECASE
+    )
+    
+    text = re.sub(
+        r'(?<![A-Za-z0-9])(Only\s+one)(✅)?\s+(Only\s+two)(✅)?\s+(Only\s+three)(✅)?\s+(All\s+four|None)(✅)?(?=[\s\n]|$|\bExp)', 
+        r'\n\1\2\n\3\4\n\5\6\n\7\8', 
+        text, 
+        flags=re.IGNORECASE
+    )
+    
+    text = re.sub(r'[ \t]+(\(?\d{1,2}[\)\.]\s+)', r'\n\1', text)
+    text = re.sub(r'[ \t]+(\(?(?:[a-eA-E])[\)\.]\s+)', r'\n\1', text)
+    
+    master_option_pattern = (
+        r'('
+        r'Only\s+(?:[1-4]|I|II|III|IV)\b|'
+        r'Only\s+(?:one|two|three|four)\b(?:\s+pairs?)?|'
+        r'Both(?:\s+(?:[1-4]|I|II|III|IV)\s+(?:and|&)\s+(?:[1-4]|I|II|III|IV))?\b|'
+        r'Neither(?:\s+(?:[1-4]|I|II|III|IV)\s+nor\s+(?:[1-4]|I|II|III|IV))?\b|'
+        r'None(?:\s+of\s+the\s+above|\s+of\s+these)?\b|'
+        r'All(?:\s+(?:four|of\s+the\s+above|\s+of\s+these))?\b|'
+        r'(?:(?:[1-4]|I|II|III|IV|i|ii|iii|iv)\s*[,&]\s*)*(?:[1-4]|I|II|III|IV|i|ii|iii|iv)\s+(?:and|&)\s+(?:[1-4]|I|II|III|IV|i|ii|iii|iv)(?:\s+only)?\b|'
+        r'(?:(?:[1-4]|I|II|III|IV|i|ii|iii|iv)\s*,\s*)+(?:[1-4]|I|II|III|IV|i|ii|iii|iv)(?:\s+only)?\b|'
+        r'(?:[1-4]|I|II|III|IV|i|ii|iii|iv)\s+only\b'
+        r')'
+    )
+    text = re.sub(rf'(?<=[.!?\s])[ \t]+{master_option_pattern}', r'\n\1', text, flags=re.IGNORECASE)
+    text = re.sub(r'[ \t]+(Select the correct|Which of the|Choose the correct|How many of the)', r'\n\1', text, flags=re.IGNORECASE)
+    
+    text = re.sub(r'(?m)^(\s*[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*)(.*)', r'\1 \2', text)
+
+    raw_lines = [line.strip() for line in text.split('\n') if line.strip()]
+    if not raw_lines: return None
+
+    correct_line_idx = -1
+    for i, line in enumerate(raw_lines):
+        if '✅' in line:
+            correct_line_idx = i
+            break
+    if correct_line_idx == -1: return None  
+
+    exp_pattern = re.compile(r'^(explanation|exp|ans|answer|solution|notes?)[\s\:\-]', re.IGNORECASE)
+    exp_start_idx = -1
+    for i in range(correct_line_idx + 1, len(raw_lines)):
+        if exp_pattern.match(raw_lines[i]):
+            exp_start_idx = i
+            break
+
+    opt_prefix_regex = re.compile(
+        r'^\s*(?:'
+        r'[\(\[]?[a-eA-E][\)\]\.\:\-]+\s*|'            
+        r'^[1-4]\s*(?:✅)?$|'                              
+        r'Statement\s+(?:I|II|III|IV|1|2|3|4)\s+is|'              
+        rf'{master_option_pattern}'                        
+        r')', re.IGNORECASE
+    )
+    
+    option_indices = [i for i, line in enumerate(raw_lines) if opt_prefix_regex.match(line)]
+    valid_opts = [i for i in option_indices if abs(i - correct_line_idx) <= 6]
+    
+    if not valid_opts:
+        statement_end_idx = 0
+        for i, line in enumerate(raw_lines):
+            if re.match(r'^\s*\d{1,2}[\.\)]', line):
+                statement_end_idx = i
+        first_opt_idx = statement_end_idx + 1 if statement_end_idx > 0 else max(0, correct_line_idx - 3)
+        last_opt_idx = exp_start_idx - 1 if exp_start_idx != -1 else len(raw_lines) - 1
+        
+        if last_opt_idx - first_opt_idx > 5:
+            first_opt_idx = max(0, correct_line_idx - 3)
+            last_opt_idx = min(len(raw_lines) - 1, correct_line_idx + 2)
+    else:
+        first_opt_idx = min(valid_opts[0], correct_line_idx)
+        last_opt_idx = max(valid_opts[-1], correct_line_idx)
+        if exp_start_idx == -1 and last_opt_idx + 1 < len(raw_lines):
+            exp_start_idx = last_opt_idx + 1
+
+    if exp_start_idx == -1:
+        for i in range(last_opt_idx + 1, len(raw_lines)):
+            if exp_pattern.match(raw_lines[i]):
+                exp_start_idx = i
+                break
+
+    question_lines = raw_lines[:first_opt_idx]
+    
+    if question_lines:
+        last_line = question_lines[-1]
+        cleaned_last_line = re.sub(r'(?:(?<=[.!?])(?:\s+(?:[1-4a-dA-D]|I|II|III|IV)){1,4}|(?:\s+(?:[1-4a-dA-D]|I|II|III|IV)){2,4})\s*$', '', last_line, flags=re.IGNORECASE)
+        if cleaned_last_line:
+            question_lines[-1] = cleaned_last_line.strip()
+            
+    raw_options = raw_lines[first_opt_idx:(last_opt_idx + 1) if exp_start_idx == -1 else exp_start_idx]
+
+    explanation = ""
+    if exp_start_idx != -1 and exp_start_idx < len(raw_lines):
+        exp_lines = raw_lines[exp_start_idx:]
+        exp_lines[0] = exp_pattern.sub('', exp_lines[0]).strip()
+        explanation = "\n".join(exp_lines).strip()
+
+    options = []
+    correct_option_id = -1
+    for i, opt_line in enumerate(raw_options):
+        if '✅' in opt_line:
+            correct_option_id = i
+        clean_opt = opt_line.replace('✅', '').strip()
+        options.append(clean_opt[:100])  
+
+    question_text = "\n".join(question_lines).strip()
+    
+    if not question_text and has_photo:
+        question_text = "👇 Please refer to the image above to answer the question."
+
+    if not question_text or len(options) < 2 or correct_option_id == -1: return None
+
+    return {
+        "question": question_text,
+        "options": options[:10],  
+        "correct_option_id": correct_option_id,
+        "explanation": explanation
+    }
 
 async def send_long_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str, parse_mode: str = "HTML", reply_to=None):
-    pass
+    chunk_size = 4000
+    for i in range(0, len(text), chunk_size):
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=text[i:i + chunk_size], 
+            parse_mode=parse_mode,
+            reply_to_message_id=reply_to
+        )
 
 async def create_upsc_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    pass
+    if update.effective_chat.type != "private":
+        return
+
+    if update.message.photo:
+        raw_text = update.message.caption
+        photo_id = update.message.photo[-1].file_id
+    else:
+        raw_text = update.message.text
+        photo_id = None
+
+    user_dm_id = update.effective_chat.id
+
+    if not raw_text:
+        await context.bot.send_message(chat_id=user_dm_id, text="❌ **Missing text!** Please include the answer in the caption.")
+        return
+
+    author_name = update.effective_user.first_name
+    if update.effective_user.last_name:
+        author_name += f" {update.effective_user.last_name}"
+
+    parsed = None
+    if photo_id:
+        parsed = parse_shorthand_caption(raw_text)
+    if not parsed:
+        parsed = parse_upsc_question(raw_text, has_photo=bool(photo_id))
+
+    if not parsed:
+        await context.bot.send_message(chat_id=user_dm_id, text="❌ **Could not parse.**\nDid you forget the ✅? Make sure options are placed cleanly above the explanation.")
+        return
+
+    question_text = parsed["question"]
+    options = parsed["options"]
+    correct_id = parsed["correct_option_id"]
+    explanation = parsed["explanation"]
+
+    try:
+        safe_author = author_name.replace('<', '&lt;').replace('>', '&gt;')
+        author_append = f"\n\n👤 <i>Quiz by: {safe_author}</i>"
+        
+        sent_photo_msg = None
+        if photo_id:
+            sent_photo_msg = await context.bot.send_photo(
+                chat_id=TARGET_GROUP_ID,
+                photo=photo_id,
+                caption=f"📸 <b>Image Reference</b>\n\n👤 <i>Submitted by: {safe_author}</i>",
+                parse_mode="HTML"
+            )
+
+        safe_question = question_text.replace('<', '&lt;').replace('>', '&gt;')
+        raw_length = len(question_text) + len(f"\n\n👤 Quiz by: {author_name}")
+        reply_target_id = sent_photo_msg.message_id if sent_photo_msg else None
+
+        if raw_length > 300:
+            long_question_text = f"📌 <b>QUESTION:</b>\n\n{safe_question}"
+            await send_long_message(context, TARGET_GROUP_ID, long_question_text, "HTML", reply_target_id)
+            poll_question = f"👇 Refer to the question above:{author_append}"
+        else:
+            poll_question = f"{safe_question}{author_append}"
+
+        short_exp = explanation[:200] if explanation else ""
+
+        await context.bot.send_poll(
+            chat_id=TARGET_GROUP_ID,
+            question=poll_question,
+            options=options,
+            type=Poll.QUIZ,
+            correct_option_id=correct_id,
+            explanation=short_exp,
+            is_anonymous=False,
+            question_parse_mode="HTML",
+            reply_to_message_id=reply_target_id
+        )
+        
+        await context.bot.send_message(chat_id=user_dm_id, text="✅ **Success!** Your unprefixed quiz was perfectly formatted and published.", parse_mode="Markdown")
+
+    except Exception as e:
+        await context.bot.send_message(chat_id=user_dm_id, text=f"❌ **Error posting to group.**\nError details: `{e}`", parse_mode="Markdown")
 
 # --- FASTAPI WEBHOOK SERVER & SCHEDULER ---
 ptb = Application.builder().updater(None).token(BOT_TOKEN).build()
@@ -116,7 +353,7 @@ ptb.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND
 
 # ⏰ Scheduled for 6:06 AM IST
 ist_tz = pytz.timezone('Asia/Kolkata')
-morning_time = time(hour=6, minute=6, tzinfo=ist_tz)  # Updated to 6:06 AM
+morning_time = time(hour=6, minute=6, tzinfo=ist_tz)  
 ptb.job_queue.run_daily(send_countdown, time=morning_time)
 
 @asynccontextmanager
